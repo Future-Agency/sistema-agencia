@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Lean Consult - Sistema de Gestión',
+  title: 'Future Agency - Sistema de Gestión',
   description: 'Tablero centralizado de gestión de clientes',
 }
 

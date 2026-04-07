@@ -28,8 +28,30 @@ export type Cliente = {
   ultima_publicacion: string
   proximo_hito: string
   riesgo: string
+  riesgo_nivel: 'muy_alto' | 'alto' | 'medio' | 'bajo' | 'no' | null
   notas: string
   activo: boolean
+  fecha_grabacion: string | null
+  fecha_grabacion_estado: 'tentativa' | 'confirmada'
+  cantidad_videos: number
+  fecha_contenido: string | null
+  fecha_contenido_fin: string | null
+  en_correccion: boolean
+  orden_owner: number | null
+  estado_changed_at: string | null
+  editor_id: string | null
+  copy_id: string | null
+  disenador_id: string | null
+  estado_edicion: string
+  estado_diseno: string
+  fecha_edicion: string | null
+  fecha_diseno: string | null
+  reels_info: string | null
+  ads_info: string | null
+  reels_terminados: string | null
+  historias_info: string | null
+  carrouseles_info: string | null
+  portadas_info: string | null
   created_at: string
   updated_at: string
 }
@@ -65,28 +87,62 @@ export type Reporte = {
   created_at: string
 }
 
+export type Task = {
+  id: string
+  titulo: string
+  descripcion: string
+  categoria: 'cliente' | 'agencia' | 'ventas' | 'admin' | 'personal' | 'aprendizaje'
+  estado: 'pendiente' | 'en_progreso' | 'bloqueado' | 'listo'
+  prioridad: 'urgente' | 'alta' | 'media' | 'baja'
+  cliente: string
+  owner_id: string | null
+  dia_asignado: string | null
+  fecha_limite: string | null
+  fecha_completado: string | null
+  orden: number | null
+  notas: string
+  created_at: string
+}
+
+export type EstadoLog = {
+  id: number
+  cliente_id: number
+  estado_anterior: string | null
+  estado_nuevo: string
+  changed_at: string
+  changed_by: string
+}
+
+export type Equipo = {
+  id: string
+  nombre: string
+  rol: 'copy' | 'editor' | 'diseñador' | 'cm'
+  color: string
+  activo: boolean
+}
+
 export const FASES_ONBOARDING = [
-  { id: 'estrategia_org', name: 'Estrategia Orgánica', defaultDays: 5 },
+  { id: 'estrategia_org', name: 'Estrategia Organica', defaultDays: 5 },
   { id: 'estrategia_pauta', name: 'Estrategia Pauta', defaultDays: 5 },
-  { id: 'aprob_estrategia', name: 'Aprobación Estrategia', defaultDays: 3 },
-  { id: 'guiones_org', name: 'Guiones Orgánico', defaultDays: 5 },
+  { id: 'aprob_estrategia', name: 'Aprobacion Estrategia', defaultDays: 3 },
+  { id: 'guiones_org', name: 'Guiones Organico', defaultDays: 5 },
   { id: 'guiones_pauta', name: 'Guiones Pauta', defaultDays: 5 },
-  { id: 'aprob_guiones', name: 'Aprobación Guiones', defaultDays: 3 },
-  { id: 'optimizacion', name: 'Optimización (CRM/E-comm/Acción)', defaultDays: 7 },
+  { id: 'aprob_guiones', name: 'Aprobacion Guiones', defaultDays: 3 },
+  { id: 'optimizacion', name: 'Optimizacion (CRM/E-comm/Accion)', defaultDays: 7 },
   { id: 'accesos', name: 'Accesos', defaultDays: 3 },
-  { id: 'coord_grabacion', name: 'Coordinar Grabación', defaultDays: 3 },
-  { id: 'grabacion', name: 'Grabación', defaultDays: 2 },
+  { id: 'coord_grabacion', name: 'Coordinar Grabacion', defaultDays: 3 },
+  { id: 'grabacion', name: 'Grabacion', defaultDays: 2 },
 ]
 
 export const FASES_ONGOING = [
-  { id: 'coord_grab', name: 'Coordinar Grabación', defaultDays: 3 },
-  { id: 'grabacion', name: 'Grabación', defaultDays: 2 },
+  { id: 'coord_grab', name: 'Coordinar Grabacion', defaultDays: 3 },
+  { id: 'grabacion', name: 'Grabacion', defaultDays: 2 },
   { id: 'subida_material', name: 'Subida Material', defaultDays: 1 },
-  { id: 'edicion', name: 'Edición', defaultDays: 4 },
-  { id: 'diseno', name: 'Diseño', defaultDays: 3 },
-  { id: 'aprob_interna', name: 'Aprobación Interna', defaultDays: 1 },
-  { id: 'aprob_cliente', name: 'Aprobación Cliente', defaultDays: 2 },
-  { id: 'subida_prog', name: 'Subida y Programación', defaultDays: 1 },
+  { id: 'edicion', name: 'Edicion', defaultDays: 4 },
+  { id: 'diseno', name: 'Diseno', defaultDays: 3 },
+  { id: 'aprob_interna', name: 'Aprobacion Interna', defaultDays: 1 },
+  { id: 'aprob_cliente', name: 'Aprobacion Cliente', defaultDays: 2 },
+  { id: 'subida_prog', name: 'Subida y Programacion', defaultDays: 1 },
   { id: 'pauta', name: 'Pauta / Anuncios', defaultDays: 2 },
   { id: 'reporte_int', name: 'Reporte Interno', defaultDays: 1 },
   { id: 'reporte_ext', name: 'Reporte Externo', defaultDays: 1 },

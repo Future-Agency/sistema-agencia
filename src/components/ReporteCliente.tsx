@@ -36,7 +36,7 @@ export default function ReporteCliente({ clientes }: Props) {
         <h2>Próximo Entregable</h2>
         <div className="reporte-metric"><span>Fecha estimada</span><span>28 de Marzo 2026</span></div>
         <div className="reporte-metric"><span>Contenido</span><span>5 videos + 3 diseños</span></div>
-        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '2px solid #eee', textAlign: 'center', fontSize: 12, color: '#aaa' }}>Lean Consult — Reporte generado automáticamente</div>
+        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '2px solid #eee', textAlign: 'center', fontSize: 12, color: '#aaa' }}>Future Agency — Reporte generado automáticamente</div>
       </div>
     </div>
   )

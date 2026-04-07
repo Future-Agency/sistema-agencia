@@ -2,6 +2,7 @@
 import { useMemo } from 'react'
 import { SemaforoIcon, Badge } from './ui'
 import type { Cliente, Owner } from '@/lib/supabase'
+import { getEstadoStyle } from '@/lib/estados'
 
 type Props = {
   clientes: Cliente[]
@@ -15,7 +16,8 @@ type Props = {
 export default function TableroGeneral({ clientes, owners, onSelectCliente, ownerFilter, tipoFilter, estadoFilter }: Props) {
   const filtered = useMemo(() => {
     return clientes.filter(c => {
-      if (ownerFilter && c.owner_id !== ownerFilter) return false
+      if (ownerFilter === '__none__' && c.owner_id) return false
+      if (ownerFilter && ownerFilter !== '__none__' && c.owner_id !== ownerFilter) return false
       if (tipoFilter && c.tipo !== tipoFilter) return false
       if (estadoFilter === 'red' && c.semaforo_general !== 'red') return false
       if (estadoFilter === 'yellow' && c.semaforo_general !== 'yellow') return false
@@ -75,8 +77,8 @@ export default function TableroGeneral({ clientes, owners, onSelectCliente, owne
                   </div>
                   <SemaforoIcon color={c.semaforo_general} size="lg" />
                 </div>
-                <div className="stat-row"><span className="stat-label">Owner</span><span className="stat-value" style={{ color: owner?.color }}>{owner?.nombre_corto}</span></div>
-                <div className="stat-row"><span className="stat-label">Estado</span><span className="stat-value" style={{ fontSize: 12 }}>{c.estado || 'Sin asignar'}</span></div>
+                <div className="stat-row"><span className="stat-label">Owner</span><span className="stat-value" style={{ color: owner?.color || '#4a4a60', fontStyle: owner ? 'normal' : 'italic' }}>{owner?.nombre_corto || 'Sin asignar'}</span></div>
+                <div className="stat-row"><span className="stat-label">Estado</span>{c.estado ? (() => { const es = getEstadoStyle(c.estado); return <span style={{ padding: '2px 6px', borderRadius: 4, background: es.bg, color: es.color, fontSize: 10, fontWeight: 600 }}>{c.estado}</span> })() : <span className="stat-value" style={{ fontSize: 12, color: '#4a4a60' }}>Sin estado</span>}</div>
                 {c.proximo_hito && (
                   <div style={{ marginTop: 8, padding: '8px 10px', background: '#1a1a28', borderRadius: 6, fontSize: 12, color: '#a0a0b8', lineHeight: 1.4 }}>
                     <i className="fas fa-flag" style={{ marginRight: 6, fontSize: 10, color: '#5e72e4' }} />

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase, type Cliente, type Owner } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo } from '@/lib/supabase'
 import { Loading, Toast } from '@/components/ui'
 import TableroGeneral from '@/components/TableroGeneral'
 import TableroCliente from '@/components/TableroCliente'
@@ -11,6 +11,11 @@ import ReunionSemanal from '@/components/ReunionSemanal'
 import ReporteCliente from '@/components/ReporteCliente'
 import TVMode from '@/components/TVMode'
 import NuevoClienteModal from '@/components/NuevoClienteModal'
+import TableroMetricas from '@/components/TableroMetricas'
+import TableroEquipo from '@/components/TableroEquipo'
+import TableroEdicion from '@/components/TableroEdicion'
+import TableroDiseno from '@/components/TableroDiseno'
+import EquipoModal from '@/components/EquipoModal'
 
 type ToastData = { message: string; type: 'success' | 'error' } | null
 
@@ -18,6 +23,7 @@ export default function Home() {
   const [view, setView] = useState('general')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [owners, setOwners] = useState<Owner[]>([])
+  const [equipo, setEquipo] = useState<Equipo[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [ownerFilter, setOwnerFilter] = useState('')
@@ -26,18 +32,21 @@ export default function Home() {
   const [search, setSearch] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
+  const [showEquipoModal, setShowEquipoModal] = useState(false)
   const [tvMode, setTvMode] = useState(false)
   const [toast, setToast] = useState<ToastData>(null)
 
   const showToast = useCallback((message: string, type: 'success' | 'error') => setToast({ message, type }), [])
 
   const loadData = useCallback(async () => {
-    const [ownersRes, clientesRes] = await Promise.all([
+    const [ownersRes, clientesRes, equipoRes] = await Promise.all([
       supabase.from('owners').select('*').eq('activo', true).order('nombre_corto'),
       supabase.from('clientes').select('*').eq('activo', true).order('nombre'),
+      supabase.from('equipo').select('*').eq('activo', true).order('nombre'),
     ])
     if (ownersRes.data) setOwners(ownersRes.data)
     if (clientesRes.data) setClientes(clientesRes.data)
+    if (equipoRes.data) setEquipo(equipoRes.data)
     setLoading(false)
   }, [])
 
@@ -63,21 +72,28 @@ export default function Home() {
     { id: 'general', icon: 'fa-th-large', label: 'Tablero General' },
     { id: 'owners', icon: 'fa-user-tie', label: 'Owners' },
     { id: 'produccion', icon: 'fa-clapperboard', label: 'Producción' },
+    { id: 'edicion', icon: 'fa-film', label: 'Edición' },
+    { id: 'diseno', icon: 'fa-palette', label: 'Diseño' },
     { id: 'pauta', icon: 'fa-bullhorn', label: 'Pauta' },
-    { id: 'reunion', icon: 'fa-handshake', label: 'Reunión Semanal' },
-    { id: 'reporte', icon: 'fa-file-lines', label: 'Reporte Cliente' },
+    { id: 'metricas', icon: 'fa-chart-bar', label: 'Métricas' },
+    { id: 'equipo', icon: 'fa-users-gear', label: 'Equipo' },
   ]
 
   const viewTitles: Record<string, string> = {
     general: 'Tablero General', owners: 'Tablero de Owners', produccion: 'Tablero de Producción',
-    pauta: 'Tablero de Pauta', reunion: 'Reunión Semanal', reporte: 'Reporte para Cliente',
+    edicion: 'Edición Tracker', diseno: 'Diseño Tracker',
+    pauta: 'Tablero de Pauta', metricas: 'Métricas', equipo: 'Equipo',
+    reunion: 'Reunión Semanal', reporte: 'Reporte para Cliente',
     detalle: selectedCliente?.nombre || 'Detalle',
   }
 
   return (
     <div>
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="logo"><div className="logo-icon">LC</div><span className="logo-text">Lean Consult</span></div>
+        <div className="logo">
+          <img src="/logo-future.jpg" alt="Future" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+          <span className="logo-text">Future Agency</span>
+        </div>
         <div className="nav">
           <div className="nav-label">Tableros</div>
           {navItems.map(item => (
@@ -90,6 +106,7 @@ export default function Home() {
           <div className="nav-label" style={{ marginTop: 12 }}>Acciones</div>
           <div className="nav-item" onClick={() => setTvMode(true)}><i className="fas fa-tv" />{!sidebarCollapsed && <span>Modo TV</span>}</div>
           <div className="nav-item" onClick={() => setShowNewModal(true)}><i className="fas fa-plus-circle" />{!sidebarCollapsed && <span>Nuevo Cliente</span>}</div>
+          <div className="nav-item" onClick={() => setShowEquipoModal(true)}><i className="fas fa-user-plus" />{!sidebarCollapsed && <span>Gestionar Equipo</span>}</div>
         </div>
         {!sidebarCollapsed && (
           <div className="owner-filter-section">
@@ -97,6 +114,7 @@ export default function Home() {
             <div>
               <span className={`owner-chip ${ownerFilter === '' ? 'active' : ''}`} onClick={() => setOwnerFilter('')}>Todos</span>
               {owners.map(o => <span key={o.id} className={`owner-chip ${ownerFilter === o.id ? 'active' : ''}`} onClick={() => setOwnerFilter(ownerFilter === o.id ? '' : o.id)}>{o.nombre_corto}</span>)}
+              <span className={`owner-chip ${ownerFilter === '__none__' ? 'active' : ''}`} onClick={() => setOwnerFilter(ownerFilter === '__none__' ? '' : '__none__')} style={ownerFilter === '__none__' ? {} : { fontStyle: 'italic' }}>Sin asignar</span>
             </div>
           </div>
         )}
@@ -127,15 +145,23 @@ export default function Home() {
 
         <div className="content" style={{ padding: 24 }}>
           {loading ? <Loading /> : selectedCliente ? (
-            <TableroCliente cliente={selectedCliente} owners={owners} onBack={() => { setSelectedCliente(null); loadData() }} onUpdate={loadData} showToast={showToast} />
+            <TableroCliente cliente={selectedCliente} owners={owners} equipo={equipo} onBack={() => { setSelectedCliente(null); loadData() }} onUpdate={loadData} onDelete={() => { setSelectedCliente(null); loadData() }} showToast={showToast} />
           ) : view === 'general' ? (
             <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} />
           ) : view === 'owners' ? (
-            <TableroOwners clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} />
+            <TableroOwners clientes={filteredClientes} owners={owners} equipo={equipo} onSelectCliente={setSelectedCliente} onUpdate={loadData} />
           ) : view === 'produccion' ? (
-            <TableroProduccion clientes={filteredClientes} owners={owners} />
+            <TableroProduccion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} ownerFilter={ownerFilter} onOwnerFilterChange={setOwnerFilter} />
+          ) : view === 'edicion' ? (
+            <TableroEdicion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} />
+          ) : view === 'diseno' ? (
+            <TableroDiseno clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} />
           ) : view === 'pauta' ? (
             <TableroPauta clientes={filteredClientes} owners={owners} />
+          ) : view === 'metricas' ? (
+            <TableroMetricas clientes={filteredClientes} owners={owners} />
+          ) : view === 'equipo' ? (
+            <TableroEquipo clientes={filteredClientes} equipo={equipo} owners={owners} onUpdate={loadData} />
           ) : view === 'reunion' ? (
             <ReunionSemanal clientes={filteredClientes} owners={owners} />
           ) : view === 'reporte' ? (
@@ -145,6 +171,7 @@ export default function Home() {
       </div>
 
       {showNewModal && <NuevoClienteModal owners={owners} onClose={() => setShowNewModal(false)} onSave={() => { setShowNewModal(false); loadData(); showToast('Cliente creado', 'success') }} />}
+      {showEquipoModal && <EquipoModal equipo={equipo} onClose={() => setShowEquipoModal(false)} onUpdate={() => { loadData(); setShowEquipoModal(false) }} />}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   )
