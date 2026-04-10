@@ -113,6 +113,27 @@ export type EstadoLog = {
   changed_by: string
 }
 
+export type AdAccount = {
+  id: number
+  account_id: string
+  account_name: string
+  platform: string
+  currency: string
+  cliente_id: number | null
+  activo: boolean
+  account_status: number
+  spend: number
+  impressions: number
+  clicks: number
+  ctr: number
+  cpc: number
+  messages: number
+  purchases: number
+  leads: number
+  last_synced_at: string | null
+  created_at: string
+}
+
 export type Equipo = {
   id: string
   nombre: string

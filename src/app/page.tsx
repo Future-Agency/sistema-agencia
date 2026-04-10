@@ -1,12 +1,12 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase, type Cliente, type Owner, type Equipo } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo, type AdAccount } from '@/lib/supabase'
 import { Loading, Toast } from '@/components/ui'
 import TableroGeneral from '@/components/TableroGeneral'
 import TableroCliente from '@/components/TableroCliente'
 import TableroOwners from '@/components/TableroOwners'
 import TableroProduccion from '@/components/TableroProduccion'
-import TableroPauta from '@/components/TableroPauta'
+import TableroAnuncios from '@/components/TableroAnuncios'
 import ReunionSemanal from '@/components/ReunionSemanal'
 import ReporteCliente from '@/components/ReporteCliente'
 import TVMode from '@/components/TVMode'
@@ -24,6 +24,7 @@ export default function Home() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [owners, setOwners] = useState<Owner[]>([])
   const [equipo, setEquipo] = useState<Equipo[]>([])
+  const [adAccounts, setAdAccounts] = useState<AdAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [ownerFilter, setOwnerFilter] = useState('')
@@ -39,14 +40,16 @@ export default function Home() {
   const showToast = useCallback((message: string, type: 'success' | 'error') => setToast({ message, type }), [])
 
   const loadData = useCallback(async () => {
-    const [ownersRes, clientesRes, equipoRes] = await Promise.all([
+    const [ownersRes, clientesRes, equipoRes, adRes] = await Promise.all([
       supabase.from('owners').select('*').eq('activo', true).order('nombre_corto'),
       supabase.from('clientes').select('*').eq('activo', true).order('nombre'),
       supabase.from('equipo').select('*').eq('activo', true).order('nombre'),
+      supabase.from('ad_accounts').select('*').eq('activo', true).order('spend', { ascending: false }),
     ])
     if (ownersRes.data) setOwners(ownersRes.data)
     if (clientesRes.data) setClientes(clientesRes.data)
     if (equipoRes.data) setEquipo(equipoRes.data)
+    if (adRes.data) setAdAccounts(adRes.data)
     setLoading(false)
   }, [])
 
@@ -74,7 +77,7 @@ export default function Home() {
     { id: 'produccion', icon: 'fa-clapperboard', label: 'Producción' },
     { id: 'edicion', icon: 'fa-film', label: 'Edición' },
     { id: 'diseno', icon: 'fa-palette', label: 'Diseño' },
-    { id: 'pauta', icon: 'fa-bullhorn', label: 'Pauta' },
+    { id: 'anuncios', icon: 'fa-rectangle-ad', label: 'Anuncios' },
     { id: 'metricas', icon: 'fa-chart-bar', label: 'Métricas' },
     { id: 'equipo', icon: 'fa-users-gear', label: 'Equipo' },
   ]
@@ -82,7 +85,7 @@ export default function Home() {
   const viewTitles: Record<string, string> = {
     general: 'Tablero General', owners: 'Tablero de Owners', produccion: 'Tablero de Producción',
     edicion: 'Edición Tracker', diseno: 'Diseño Tracker',
-    pauta: 'Tablero de Pauta', metricas: 'Métricas', equipo: 'Equipo',
+    anuncios: 'Anuncios', metricas: 'Métricas', equipo: 'Equipo',
     reunion: 'Reunión Semanal', reporte: 'Reporte para Cliente',
     detalle: selectedCliente?.nombre || 'Detalle',
   }
@@ -156,8 +159,8 @@ export default function Home() {
             <TableroEdicion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} />
           ) : view === 'diseno' ? (
             <TableroDiseno clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} />
-          ) : view === 'pauta' ? (
-            <TableroPauta clientes={filteredClientes} owners={owners} />
+          ) : view === 'anuncios' ? (
+            <TableroAnuncios clientes={filteredClientes} owners={owners} adAccounts={adAccounts} onUpdate={loadData} />
           ) : view === 'metricas' ? (
             <TableroMetricas clientes={filteredClientes} owners={owners} />
           ) : view === 'equipo' ? (
