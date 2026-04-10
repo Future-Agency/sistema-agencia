@@ -1,12 +1,15 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { supabase, type Cliente, type Owner, type Equipo, type FaseCliente, type Nota, type Reporte } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo, type FaseCliente, type Nota, type Reporte, type AdAccount, type PeriodMetrics } from '@/lib/supabase'
 import { updateEstado } from '@/lib/estadoHelper'
 import { SemaforoIcon, Badge } from './ui'
+import { generarReportePDF } from '@/lib/reportePDF'
 
-type Props = { cliente: Cliente; owners: Owner[]; equipo: Equipo[]; onBack: () => void; onUpdate: () => void; onDelete: () => void; showToast: (msg: string, type: 'success' | 'error') => void }
+type Props = { cliente: Cliente; owners: Owner[]; equipo: Equipo[]; adAccounts: AdAccount[]; onBack: () => void; onUpdate: () => void; onDelete: () => void; showToast: (msg: string, type: 'success' | 'error') => void }
 
-export default function TableroCliente({ cliente, owners, equipo, onBack, onUpdate, onDelete, showToast }: Props) {
+export default function TableroCliente({ cliente, owners, equipo, adAccounts, onBack, onUpdate, onDelete, showToast }: Props) {
+  const [reportePeriod, setReportePeriod] = useState<'7d' | '15d' | '30d'>('30d')
+  const cuentasCliente = adAccounts.filter(a => a.cliente_id === cliente.id)
   const [tab, setTab] = useState('proceso')
   const [nota, setNota] = useState('')
   const [notas, setNotas] = useState<Nota[]>([])
@@ -116,7 +119,27 @@ export default function TableroCliente({ cliente, owners, equipo, onBack, onUpda
             ))}
           </div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {cuentasCliente.length > 0 && (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 4 }}>
+              <select className="editable-select" value={reportePeriod} onChange={e => setReportePeriod(e.target.value as any)} style={{ fontSize: 11 }}>
+                <option value="7d">7 días</option>
+                <option value="15d">15 días</option>
+                <option value="30d">30 días</option>
+              </select>
+              <button className="btn btn-sm" style={{ background: 'linear-gradient(135deg, #5e72e4, #8965e0)', color: 'white' }}
+                onClick={() => {
+                  try {
+                    generarReportePDF({ cliente, owner, cuentas: cuentasCliente, period: reportePeriod })
+                    showToast('Reporte generado', 'success')
+                  } catch (err: any) {
+                    showToast('Error: ' + err.message, 'error')
+                  }
+                }}>
+                <i className="fas fa-file-pdf" /> Reporte PDF
+              </button>
+            </div>
+          )}
           <button className="btn btn-outline btn-sm" onClick={() => setEditing(!editing)}>
             <i className={`fas ${editing ? 'fa-times' : 'fa-pen'}`} /> {editing ? 'Cancelar' : 'Editar'}
           </button>

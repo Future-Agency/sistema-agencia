@@ -148,7 +148,7 @@ export default function Home() {
 
         <div className="content" style={{ padding: 24 }}>
           {loading ? <Loading /> : selectedCliente ? (
-            <TableroCliente cliente={selectedCliente} owners={owners} equipo={equipo} onBack={() => { setSelectedCliente(null); loadData() }} onUpdate={loadData} onDelete={() => { setSelectedCliente(null); loadData() }} showToast={showToast} />
+            <TableroCliente cliente={selectedCliente} owners={owners} equipo={equipo} adAccounts={adAccounts} onBack={() => { setSelectedCliente(null); loadData() }} onUpdate={loadData} onDelete={() => { setSelectedCliente(null); loadData() }} showToast={showToast} />
           ) : view === 'general' ? (
             <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} />
           ) : view === 'owners' ? (
