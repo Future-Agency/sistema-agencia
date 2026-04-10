@@ -120,26 +120,29 @@ export default function TableroCliente({ cliente, owners, equipo, adAccounts, on
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {cuentasCliente.length > 0 && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 4 }}>
-              <select className="editable-select" value={reportePeriod} onChange={e => setReportePeriod(e.target.value as any)} style={{ fontSize: 11 }}>
-                <option value="7d">7 días</option>
-                <option value="15d">15 días</option>
-                <option value="30d">30 días</option>
-              </select>
-              <button className="btn btn-sm" style={{ background: 'linear-gradient(135deg, #5e72e4, #8965e0)', color: 'white' }}
-                onClick={() => {
-                  try {
-                    generarReportePDF({ cliente, owner, cuentas: cuentasCliente, period: reportePeriod })
-                    showToast('Reporte generado', 'success')
-                  } catch (err: any) {
-                    showToast('Error: ' + err.message, 'error')
-                  }
-                }}>
-                <i className="fas fa-file-pdf" /> Reporte PDF
-              </button>
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 4 }}>
+            <select className="editable-select" value={reportePeriod} onChange={e => setReportePeriod(e.target.value as any)} style={{ fontSize: 11 }}>
+              <option value="7d">7 días</option>
+              <option value="15d">15 días</option>
+              <option value="30d">30 días</option>
+            </select>
+            <button className="btn btn-sm" style={{ background: 'linear-gradient(135deg, #5e72e4, #8965e0)', color: 'white' }}
+              title={cuentasCliente.length === 0 ? 'Vincula una cuenta desde Anuncios para incluir metricas' : `${cuentasCliente.length} cuenta(s) vinculada(s)`}
+              onClick={() => {
+                if (cuentasCliente.length === 0) {
+                  showToast('Este cliente no tiene cuentas de Meta Ads vinculadas. Vincula una desde el tablero Anuncios.', 'error')
+                  return
+                }
+                try {
+                  generarReportePDF({ cliente, owner, cuentas: cuentasCliente, period: reportePeriod })
+                  showToast('Reporte generado', 'success')
+                } catch (err: any) {
+                  showToast('Error: ' + err.message, 'error')
+                }
+              }}>
+              <i className="fas fa-file-pdf" /> Reporte PDF {cuentasCliente.length > 0 ? `(${cuentasCliente.length})` : ''}
+            </button>
+          </div>
           <button className="btn btn-outline btn-sm" onClick={() => setEditing(!editing)}>
             <i className={`fas ${editing ? 'fa-times' : 'fa-pen'}`} /> {editing ? 'Cancelar' : 'Editar'}
           </button>
