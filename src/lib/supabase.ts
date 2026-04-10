@@ -113,6 +113,18 @@ export type EstadoLog = {
   changed_by: string
 }
 
+export type PeriodMetrics = {
+  spend?: number
+  impressions?: number
+  clicks?: number
+  ctr?: number
+  cpc?: number
+  purchases?: number
+  leads?: number
+  messages?: number
+  purchase_value?: number
+}
+
 export type AdAccount = {
   id: number
   account_id: string
@@ -132,6 +144,9 @@ export type AdAccount = {
   leads: number
   last_synced_at: string | null
   created_at: string
+  metrics_7d: PeriodMetrics | null
+  metrics_15d: PeriodMetrics | null
+  metrics_30d: PeriodMetrics | null
 }
 
 export type Equipo = {
