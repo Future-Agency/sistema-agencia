@@ -184,7 +184,7 @@ export default function Home() {
           ) : view === 'diseno' ? (
             <TableroDiseno clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} />
           ) : view === 'anuncios' ? (
-            <TableroAnuncios clientes={filteredClientes} owners={owners} adAccounts={adAccounts} onUpdate={loadData} />
+            <TableroAnuncios clientes={filteredClientes} owners={owners} adAccounts={adAccounts} onUpdate={loadData} agencias={agencias} agenciaId={agenciaId} />
           ) : view === 'metricas' ? (
             <TableroMetricas clientes={filteredClientes} owners={owners} />
           ) : view === 'equipo' ? (

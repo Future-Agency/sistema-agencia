@@ -62,6 +62,7 @@ export type Cliente = {
   portadas_info: string | null
   created_at: string
   updated_at: string
+  agencia_id?: string
 }
 
 export type FaseCliente = {
@@ -155,6 +156,7 @@ export type AdAccount = {
   metrics_7d: PeriodMetrics | null
   metrics_15d: PeriodMetrics | null
   metrics_30d: PeriodMetrics | null
+  agencia_id?: string
 }
 
 export type AdAccountConfig = {

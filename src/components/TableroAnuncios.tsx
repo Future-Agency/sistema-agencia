@@ -3,8 +3,10 @@ import { useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Cliente, Owner, AdAccount, PeriodMetrics } from '@/lib/supabase'
 import GestionAnuncio from './GestionAnuncio'
+import GestionCuentasModal from './GestionCuentasModal'
+import type { Agencia } from '@/lib/supabase'
 
-type Props = { clientes: Cliente[]; owners: Owner[]; adAccounts: AdAccount[]; onUpdate: () => void }
+type Props = { clientes: Cliente[]; owners: Owner[]; adAccounts: AdAccount[]; onUpdate: () => void; agencias?: Agencia[]; agenciaId?: string }
 
 type Period = '7d' | '15d' | '30d'
 type SortKey = 'account_name' | 'spend' | 'impressions' | 'clicks' | 'ctr' | 'cpr' | 'roas' | 'messages' | 'purchases' | 'leads' | 'purchase_value'
@@ -97,7 +99,7 @@ function buildRow(acc: AdAccount, period: Period): Row {
   }
 }
 
-export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate }: Props) {
+export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate, agencias = [], agenciaId = 'future' }: Props) {
   const [period, setPeriod] = useState<Period>('30d')
   const [sortKey, setSortKey] = useState<SortKey>('spend')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -108,6 +110,7 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
   const [selectedAccount, setSelectedAccount] = useState<AdAccount | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<string>('')
+  const [showManageModal, setShowManageModal] = useState(false)
 
   async function syncMetaAds() {
     setSyncing(true); setSyncStatus('')
@@ -230,6 +233,15 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
 
   return (
     <div className="fade-in">
+      {showManageModal && (
+        <GestionCuentasModal
+          agenciaId={agenciaId}
+          agencias={agencias}
+          clientes={clientes}
+          onClose={() => setShowManageModal(false)}
+          onUpdate={onUpdate}
+        />
+      )}
       {/* Period toggle + export */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4, background: '#1a1a28', padding: 4, borderRadius: 10 }}>
@@ -265,6 +277,9 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
               Ultima sync: {new Date(lastSync).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
+          <button className="btn btn-outline btn-sm" onClick={() => setShowManageModal(true)} style={{ fontSize: 11 }}>
+            <i className="fas fa-cog" /> Gestionar cuentas
+          </button>
           <button className="btn btn-sm" onClick={syncMetaAds} disabled={syncing}
             style={{ background: syncing ? '#2a2a40' : 'linear-gradient(135deg, #5e72e4, #8965e0)', color: 'white', fontSize: 11 }}>
             <i className={`fas ${syncing ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`} /> {syncing ? 'Sincronizando...' : 'Sincronizar'}

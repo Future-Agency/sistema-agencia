@@ -106,7 +106,28 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
   }
 
   async function deleteCambio(id: number) {
+    if (!confirm('Eliminar este cambio del historial?')) return
     await supabase.from('ad_cambios_log').delete().eq('id', id)
+    loadData()
+  }
+
+  const [editingCambio, setEditingCambio] = useState<number | null>(null)
+  const [editCambioForm, setEditCambioForm] = useState({ fecha: '', tipo: '', descripcion: '', resultado: '' })
+
+  function startEditCambio(c: AdCambioLog) {
+    setEditingCambio(c.id)
+    setEditCambioForm({ fecha: c.fecha, tipo: c.tipo, descripcion: c.descripcion, resultado: c.resultado })
+  }
+
+  async function saveCambioEdit() {
+    if (editingCambio === null) return
+    await supabase.from('ad_cambios_log').update({
+      fecha: editCambioForm.fecha,
+      tipo: editCambioForm.tipo,
+      descripcion: editCambioForm.descripcion,
+      resultado: editCambioForm.resultado,
+    }).eq('id', editingCambio)
+    setEditingCambio(null)
     loadData()
   }
 
@@ -496,7 +517,22 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
                 <div style={{ fontSize: 11, marginTop: 4 }}>Registra cada optimizacion con fecha y resultado para trackear el impacto</div>
               </div>
             )}
-            {cambios.map(c => (
+            {cambios.map(c => editingCambio === c.id ? (
+              <div key={c.id} style={{ padding: 12, borderLeft: '3px solid #f5a623', background: 'rgba(245,166,35,.08)', borderRadius: '0 8px 8px 0', marginBottom: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 8, marginBottom: 8 }}>
+                  <input className="input" type="date" value={editCambioForm.fecha} onChange={e => setEditCambioForm({ ...editCambioForm, fecha: e.target.value })} style={{ fontSize: 11 }} />
+                  <select className="select-custom" style={{ width: '100%', fontSize: 11 }} value={editCambioForm.tipo} onChange={e => setEditCambioForm({ ...editCambioForm, tipo: e.target.value })}>
+                    {TIPOS_CAMBIO.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+                  </select>
+                </div>
+                <textarea className="input textarea" placeholder="Que se hizo" value={editCambioForm.descripcion} onChange={e => setEditCambioForm({ ...editCambioForm, descripcion: e.target.value })} style={{ fontSize: 12, marginBottom: 6 }} />
+                <textarea className="input textarea" placeholder="Resultado medido (CPR, ROAS, tiempo, etc.)" value={editCambioForm.resultado} onChange={e => setEditCambioForm({ ...editCambioForm, resultado: e.target.value })} style={{ fontSize: 12, marginBottom: 8 }} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-primary btn-sm" onClick={saveCambioEdit}><i className="fas fa-save" /> Guardar</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => setEditingCambio(null)}>Cancelar</button>
+                </div>
+              </div>
+            ) : (
               <div key={c.id} style={{ padding: 12, borderLeft: '3px solid #5e72e4', background: '#1a1a28', borderRadius: '0 8px 8px 0', marginBottom: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -505,12 +541,26 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
                       <i className={`fas ${tipoIcon[c.tipo] || 'fa-ellipsis-h'}`} style={{ marginRight: 4, fontSize: 9 }} />{c.tipo.replace('_', ' ')}
                     </span>
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => deleteCambio(c.id)} style={{ color: '#f5365c', fontSize: 11 }}><i className="fas fa-trash" /></button>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => startEditCambio(c)} style={{ color: '#5e72e4', fontSize: 11 }} title="Editar">
+                      <i className="fas fa-pen" />
+                    </button>
+                    {!c.resultado && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => startEditCambio(c)} style={{ color: '#00d97e', fontSize: 11, padding: '3px 8px' }} title="Medir resultado">
+                        <i className="fas fa-chart-line" /> Medir
+                      </button>
+                    )}
+                    <button className="btn btn-ghost btn-sm" onClick={() => deleteCambio(c.id)} style={{ color: '#f5365c', fontSize: 11 }}><i className="fas fa-trash" /></button>
+                  </div>
                 </div>
                 <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{c.descripcion}</div>
-                {c.resultado && (
+                {c.resultado ? (
                   <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 6, background: 'rgba(0,217,126,.06)', border: '1px solid #00d97e22', fontSize: 12, color: '#00d97e' }}>
                     <i className="fas fa-chart-line" style={{ marginRight: 6, fontSize: 10 }} />{c.resultado}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 6, background: 'rgba(245,166,35,.06)', border: '1px dashed #f5a62344', fontSize: 11, color: '#f5a623', fontStyle: 'italic' }}>
+                    <i className="fas fa-hourglass-half" style={{ marginRight: 6, fontSize: 10 }} />Pendiente medir resultado — click en Medir cuando tengas datos
                   </div>
                 )}
               </div>
