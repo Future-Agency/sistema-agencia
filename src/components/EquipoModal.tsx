@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { supabase, type Equipo } from '@/lib/supabase'
 
-type Props = { equipo: Equipo[]; onClose: () => void; onUpdate: () => void }
+type Props = { equipo: Equipo[]; agenciaId?: string; onClose: () => void; onUpdate: () => void }
 
 const ROL_OPTIONS: { value: Equipo['rol']; label: string; icon: string }[] = [
   { value: 'copy', label: 'Copy', icon: 'fa-pen-fancy' },
@@ -13,7 +13,7 @@ const ROL_OPTIONS: { value: Equipo['rol']; label: string; icon: string }[] = [
 
 const COLORS = ['#5e72e4', '#f5a623', '#00d97e', '#f5365c', '#a78bfa', '#fb7185', '#34d399', '#fbbf24', '#818cf8', '#f472b6']
 
-export default function EquipoModal({ equipo, onClose, onUpdate }: Props) {
+export default function EquipoModal({ equipo, agenciaId = 'future', onClose, onUpdate }: Props) {
   const [nombre, setNombre] = useState('')
   const [rol, setRol] = useState<Equipo['rol']>('editor')
   const [color, setColor] = useState('#5e72e4')
@@ -22,7 +22,7 @@ export default function EquipoModal({ equipo, onClose, onUpdate }: Props) {
   async function addMember() {
     if (!nombre.trim()) return
     setSaving(true)
-    await supabase.from('equipo').insert({ nombre: nombre.trim(), rol, color })
+    await supabase.from('equipo').insert({ nombre: nombre.trim(), rol, color, agencia_id: agenciaId })
     setSaving(false)
     setNombre('')
     onUpdate()

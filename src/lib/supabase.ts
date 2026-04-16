@@ -5,12 +5,20 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
+export type Agencia = {
+  id: string
+  nombre: string
+  color: string
+  activo: boolean
+}
+
 export type Owner = {
   id: string
   nombre: string
   nombre_corto: string
   color: string
   activo: boolean
+  agencia_id?: string
 }
 
 export type Cliente = {

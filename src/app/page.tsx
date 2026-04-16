@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase, type Cliente, type Owner, type Equipo, type AdAccount } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia } from '@/lib/supabase'
 import { Loading, Toast } from '@/components/ui'
 import TableroGeneral from '@/components/TableroGeneral'
 import TableroCliente from '@/components/TableroCliente'
@@ -21,6 +21,8 @@ type ToastData = { message: string; type: 'success' | 'error' } | null
 
 export default function Home() {
   const [view, setView] = useState('general')
+  const [agencias, setAgencias] = useState<Agencia[]>([])
+  const [agenciaId, setAgenciaId] = useState<string>('future')
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [owners, setOwners] = useState<Owner[]>([])
   const [equipo, setEquipo] = useState<Equipo[]>([])
@@ -40,12 +42,17 @@ export default function Home() {
   const showToast = useCallback((message: string, type: 'success' | 'error') => setToast({ message, type }), [])
 
   const loadData = useCallback(async () => {
-    const [ownersRes, clientesRes, equipoRes, adRes] = await Promise.all([
-      supabase.from('owners').select('*').eq('activo', true).order('nombre_corto'),
-      supabase.from('clientes').select('*').eq('activo', true).order('nombre'),
-      supabase.from('equipo').select('*').eq('activo', true).order('nombre'),
-      supabase.from('ad_accounts').select('*').eq('activo', true).order('spend', { ascending: false }),
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('agencia_id') : null
+    const ag = stored || 'future'
+    const [agenciasRes, ownersRes, clientesRes, equipoRes, adRes] = await Promise.all([
+      supabase.from('agencias').select('*').eq('activo', true).order('nombre'),
+      supabase.from('owners').select('*').eq('activo', true).eq('agencia_id', ag).order('nombre_corto'),
+      supabase.from('clientes').select('*').eq('activo', true).eq('agencia_id', ag).order('nombre'),
+      supabase.from('equipo').select('*').eq('activo', true).eq('agencia_id', ag).order('nombre'),
+      supabase.from('ad_accounts').select('*').eq('activo', true).eq('agencia_id', ag).order('spend', { ascending: false }),
     ])
+    if (agenciasRes.data) setAgencias(agenciasRes.data)
+    setAgenciaId(ag)
     if (ownersRes.data) setOwners(ownersRes.data)
     if (clientesRes.data) setClientes(clientesRes.data)
     if (equipoRes.data) setEquipo(equipoRes.data)
@@ -54,6 +61,15 @@ export default function Home() {
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  const switchAgencia = (id: string) => {
+    localStorage.setItem('agencia_id', id)
+    setAgenciaId(id)
+    setSelectedCliente(null)
+    setOwnerFilter('')
+    setLoading(true)
+    setTimeout(loadData, 50)
+  }
 
   const filteredClientes = useMemo(() => {
     if (!search) return clientes
@@ -95,8 +111,16 @@ export default function Home() {
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="logo">
           <img src="/logo-future.jpg" alt="Future" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
-          <span className="logo-text">Future Agency</span>
+          <span className="logo-text">{agencias.find(a => a.id === agenciaId)?.nombre || 'Future Agency'}</span>
         </div>
+        {!sidebarCollapsed && agencias.length > 1 && (
+          <div style={{ padding: '0 14px 10px' }}>
+            <select value={agenciaId} onChange={e => switchAgencia(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#1a1a28', border: `1px solid ${agencias.find(a => a.id === agenciaId)?.color || '#2a2a40'}55`, color: '#e8e8f0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              {agencias.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+            </select>
+          </div>
+        )}
         <div className="nav">
           <div className="nav-label">Tableros</div>
           {navItems.map(item => (
@@ -173,8 +197,8 @@ export default function Home() {
         </div>
       </div>
 
-      {showNewModal && <NuevoClienteModal owners={owners} onClose={() => setShowNewModal(false)} onSave={() => { setShowNewModal(false); loadData(); showToast('Cliente creado', 'success') }} />}
-      {showEquipoModal && <EquipoModal equipo={equipo} onClose={() => setShowEquipoModal(false)} onUpdate={() => { loadData(); setShowEquipoModal(false) }} />}
+      {showNewModal && <NuevoClienteModal owners={owners} agenciaId={agenciaId} onClose={() => setShowNewModal(false)} onSave={() => { setShowNewModal(false); loadData(); showToast('Cliente creado', 'success') }} />}
+      {showEquipoModal && <EquipoModal equipo={equipo} agenciaId={agenciaId} onClose={() => setShowEquipoModal(false)} onUpdate={() => { loadData(); setShowEquipoModal(false) }} />}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   )

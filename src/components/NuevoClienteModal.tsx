@@ -2,10 +2,10 @@
 import { useState } from 'react'
 import { supabase, FASES_ONBOARDING, type Owner } from '@/lib/supabase'
 
-type Props = { owners: Owner[]; onClose: () => void; onSave: () => void }
+type Props = { owners: Owner[]; agenciaId?: string; onClose: () => void; onSave: () => void }
 
-export default function NuevoClienteModal({ owners, onClose, onSave }: Props) {
-  const [form, setForm] = useState({ nombre: '', tipo: 'CRM', owner_id: 'rami', objetivo: '' })
+export default function NuevoClienteModal({ owners, agenciaId = 'future', onClose, onSave }: Props) {
+  const [form, setForm] = useState({ nombre: '', tipo: 'CRM', owner_id: owners[0]?.id || 'rami', objetivo: '' })
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
@@ -14,7 +14,7 @@ export default function NuevoClienteModal({ owners, onClose, onSave }: Props) {
     const { data, error } = await supabase.from('clientes').insert({
       nombre: form.nombre, tipo: form.tipo, owner_id: form.owner_id,
       estado: 'Onboarding', is_onboarding: true, semaforo_general: 'blue',
-      objetivo: form.objetivo, progreso: 0,
+      objetivo: form.objetivo, progreso: 0, agencia_id: agenciaId,
       ultimo_contacto: new Date().toLocaleDateString('es-AR'),
       ultima_publicacion: '-', proximo_hito: form.objetivo, riesgo: '',
     }).select().single()
