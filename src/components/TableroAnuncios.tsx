@@ -2,6 +2,7 @@
 import { useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Cliente, Owner, AdAccount, PeriodMetrics } from '@/lib/supabase'
+import GestionAnuncio from './GestionAnuncio'
 
 type Props = { clientes: Cliente[]; owners: Owner[]; adAccounts: AdAccount[]; onUpdate: () => void }
 
@@ -104,6 +105,7 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [ownerFilter, setOwnerFilter] = useState<string>('all')
   const [editingLink, setEditingLink] = useState<number | null>(null)
+  const [selectedAccount, setSelectedAccount] = useState<AdAccount | null>(null)
 
   const periodLabel = period === '7d' ? 'últimos 7 días' : period === '15d' ? 'últimos 15 días' : 'últimos 30 días'
 
@@ -190,6 +192,11 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
       return { ...o, count }
     })
   }, [owners, rows, clientes])
+
+  if (selectedAccount) {
+    const clienteVinculado = clientes.find(c => c.id === selectedAccount.cliente_id) || null
+    return <GestionAnuncio account={selectedAccount} cliente={clienteVinculado} onBack={() => { setSelectedAccount(null); onUpdate() }} />
+  }
 
   return (
     <div className="fade-in">
@@ -320,12 +327,12 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
                   <tr key={acc.id} style={{ opacity: r.spend === 0 ? 0.5 : 1 }}>
                     <td style={{ color: '#4a4a60', fontSize: 11 }}>{i + 1}</td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => setSelectedAccount(acc)}>
                         <div style={{ width: 28, height: 28, borderRadius: 6, background: 'linear-gradient(135deg, #1877F2, #0866FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <i className="fab fa-meta" style={{ fontSize: 13, color: '#fff' }} />
                         </div>
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{acc.account_name}</div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: '#5e72e4' }}>{acc.account_name}</div>
                           <div style={{ fontSize: 9, color: '#4a4a60' }}>{acc.account_id}</div>
                         </div>
                       </div>

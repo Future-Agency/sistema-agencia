@@ -149,6 +149,54 @@ export type AdAccount = {
   metrics_30d: PeriodMetrics | null
 }
 
+export type AdAccountConfig = {
+  id: number
+  ad_account_id: number
+  estado_cuenta: string
+  estrategia: string
+  roas_break_even: number | null
+  tipo_conversion: string
+  objetivo_mensual: string
+  notas: string
+  created_at: string
+  updated_at: string
+}
+
+export type AdCambioLog = {
+  id: number
+  ad_account_id: number
+  fecha: string
+  tipo: string
+  descripcion: string
+  resultado: string
+  created_at: string
+}
+
+export type AdCreativo = {
+  id: number
+  ad_account_id: number
+  nombre: string
+  tipo: string
+  estado: string
+  spend: number
+  resultados: number
+  cpr: number
+  notas: string
+  created_at: string
+}
+
+export type AdCampana = {
+  id: number
+  ad_account_id: number
+  nombre: string
+  objetivo: string
+  tipo_audiencia: string
+  presupuesto_diario: number | null
+  estado: string
+  notas: string
+  created_at: string
+}
+
 export type Equipo = {
   id: string
   nombre: string
