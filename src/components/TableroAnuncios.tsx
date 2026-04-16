@@ -106,6 +106,36 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
   const [ownerFilter, setOwnerFilter] = useState<string>('all')
   const [editingLink, setEditingLink] = useState<number | null>(null)
   const [selectedAccount, setSelectedAccount] = useState<AdAccount | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<string>('')
+
+  async function syncMetaAds() {
+    setSyncing(true); setSyncStatus('')
+    try {
+      const res = await fetch('https://nnwndlyiwjbybcjljdtu.supabase.co/functions/v1/sync-meta-ads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+        },
+      })
+      const json = await res.json()
+      if (json.ok) {
+        setSyncStatus(`${json.synced}/${json.total} cuentas actualizadas`)
+        onUpdate()
+      } else setSyncStatus('Error: ' + (json.error || 'desconocido'))
+    } catch (e: any) {
+      setSyncStatus('Error: ' + e.message)
+    }
+    setSyncing(false)
+    setTimeout(() => setSyncStatus(''), 5000)
+  }
+
+  const lastSync = useMemo(() => {
+    const times = adAccounts.map(a => a.last_synced_at).filter(Boolean) as string[]
+    if (times.length === 0) return null
+    return times.sort().reverse()[0]
+  }, [adAccounts])
 
   const periodLabel = period === '7d' ? 'últimos 7 días' : period === '15d' ? 'últimos 15 días' : 'últimos 30 días'
 
@@ -227,10 +257,23 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
           <i className="fas fa-calendar" style={{ marginRight: 6 }} />
           Reporte {periodLabel}
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#4a4a60' }}>
-          <i className="fas fa-database" style={{ marginRight: 4 }} />
-          {adAccounts.length} cuentas · Meta Ads
-        </span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {syncStatus && <span style={{ fontSize: 11, color: syncStatus.startsWith('Error') ? '#f5365c' : '#00d97e', fontWeight: 600 }}>{syncStatus}</span>}
+          {lastSync && !syncStatus && (
+            <span style={{ fontSize: 10, color: '#4a4a60' }}>
+              <i className="fas fa-clock" style={{ marginRight: 3 }} />
+              Ultima sync: {new Date(lastSync).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <button className="btn btn-sm" onClick={syncMetaAds} disabled={syncing}
+            style={{ background: syncing ? '#2a2a40' : 'linear-gradient(135deg, #5e72e4, #8965e0)', color: 'white', fontSize: 11 }}>
+            <i className={`fas ${syncing ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`} /> {syncing ? 'Sincronizando...' : 'Sincronizar'}
+          </button>
+          <span style={{ fontSize: 11, color: '#4a4a60' }}>
+            <i className="fas fa-database" style={{ marginRight: 4 }} />
+            {adAccounts.length} cuentas · Meta Ads
+          </span>
+        </div>
       </div>
 
       {/* Stats */}
