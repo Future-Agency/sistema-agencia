@@ -89,7 +89,8 @@ export default function TableroCliente({ cliente, owners, equipo, adAccounts, on
   }
 
   async function deleteCliente() {
-    const { error } = await supabase.from('clientes').delete().eq('id', cliente.id)
+    // Soft delete: desactivar para preservar historial (cuentas publicitarias, leads, briefs, etc.)
+    const { error } = await supabase.from('clientes').update({ activo: false }).eq('id', cliente.id)
     if (!error) {
       showToast(`${cliente.nombre} eliminado`, 'success')
       onDelete()
