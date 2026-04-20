@@ -216,16 +216,22 @@ export type Equipo = {
 }
 
 export const FASES_ONBOARDING = [
-  { id: 'estrategia_org', name: 'Estrategia Organica', defaultDays: 5 },
-  { id: 'estrategia_pauta', name: 'Estrategia Pauta', defaultDays: 5 },
-  { id: 'aprob_estrategia', name: 'Aprobacion Estrategia', defaultDays: 3 },
-  { id: 'guiones_org', name: 'Guiones Organico', defaultDays: 5 },
-  { id: 'guiones_pauta', name: 'Guiones Pauta', defaultDays: 5 },
-  { id: 'aprob_guiones', name: 'Aprobacion Guiones', defaultDays: 3 },
-  { id: 'optimizacion', name: 'Optimizacion (CRM/E-comm/Accion)', defaultDays: 7 },
-  { id: 'accesos', name: 'Accesos', defaultDays: 3 },
-  { id: 'coord_grabacion', name: 'Coordinar Grabacion', defaultDays: 3 },
-  { id: 'grabacion', name: 'Grabacion', defaultDays: 2 },
+  { id: 'crear_grupo', name: 'Crear Grupo', defaultDays: 1, icon: 'fa-users' },
+  { id: 'envio_form', name: 'Envio Formulario Onboarding', defaultDays: 2, icon: 'fa-file-alt' },
+  { id: 'kickoff', name: 'Reunion Kick Off', defaultDays: 3, icon: 'fa-handshake' },
+  { id: 'accesos_meta', name: 'Accesos Meta', defaultDays: 3, icon: 'fa-key' },
+  { id: 'proceso_estrategia', name: 'Proceso de Estrategia', defaultDays: 5, icon: 'fa-brain' },
+  { id: 'presentar_estrategia', name: 'Presentar Estrategia', defaultDays: 2, icon: 'fa-chalkboard' },
+  { id: 'presentar_guiones', name: 'Presentar Primeros Guiones', defaultDays: 3, icon: 'fa-scroll' },
+  { id: 'coord_primera_grab', name: 'Coordinar Primera Grabacion', defaultDays: 2, icon: 'fa-calendar-check' },
+  { id: 'crear_crm', name: 'Crear CRM', defaultDays: 3, icon: 'fa-address-book' },
+  { id: 'crear_landing', name: 'Crear Landing', defaultDays: 3, icon: 'fa-globe' },
+  { id: 'primera_grab_pago', name: 'Primera Grabacion / Pago', defaultDays: 1, icon: 'fa-video' },
+  { id: 'edicion_diseno', name: 'Edicion y Diseno', defaultDays: 4, icon: 'fa-palette' },
+  { id: 'aprob_publicacion', name: 'Aprobacion y Publicacion', defaultDays: 2, icon: 'fa-check-circle' },
+  { id: 'rev_ads_1d', name: 'Revision ADS (+1 dia)', defaultDays: 1, icon: 'fa-bullhorn' },
+  { id: 'rev_resultados_3d', name: 'Primeros Resultados (+3 dias)', defaultDays: 3, icon: 'fa-chart-bar' },
+  { id: 'rev_mini_reporte_7d', name: 'Mini Reporte (+7 dias)', defaultDays: 7, icon: 'fa-chart-line' },
 ]
 
 export const FASES_ONGOING = [

@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia } from '@/lib/supabase'
 import { Loading, Toast } from '@/components/ui'
 import TableroGeneral from '@/components/TableroGeneral'
+import TableroOnboarding from '@/components/TableroOnboarding'
 import TableroCliente from '@/components/TableroCliente'
 import TableroOwners from '@/components/TableroOwners'
 import TableroProduccion from '@/components/TableroProduccion'
@@ -89,6 +90,7 @@ export default function Home() {
 
   const navItems = [
     { id: 'general', icon: 'fa-th-large', label: 'Tablero General' },
+    { id: 'onboarding', icon: 'fa-rocket', label: 'Onboarding' },
     { id: 'owners', icon: 'fa-user-tie', label: 'Owners' },
     { id: 'produccion', icon: 'fa-clapperboard', label: 'Producción' },
     { id: 'edicion', icon: 'fa-film', label: 'Edición' },
@@ -99,7 +101,7 @@ export default function Home() {
   ]
 
   const viewTitles: Record<string, string> = {
-    general: 'Tablero General', owners: 'Tablero de Owners', produccion: 'Tablero de Producción',
+    general: 'Tablero General', onboarding: 'Pipeline de Onboarding', owners: 'Tablero de Owners', produccion: 'Tablero de Producción',
     edicion: 'Edición Tracker', diseno: 'Diseño Tracker',
     anuncios: 'Anuncios', metricas: 'Métricas', equipo: 'Equipo',
     reunion: 'Reunión Semanal', reporte: 'Reporte para Cliente',
@@ -175,6 +177,8 @@ export default function Home() {
             <TableroCliente cliente={selectedCliente} owners={owners} equipo={equipo} adAccounts={adAccounts} onBack={() => { setSelectedCliente(null); loadData() }} onUpdate={loadData} onDelete={() => { setSelectedCliente(null); loadData() }} showToast={showToast} />
           ) : view === 'general' ? (
             <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} />
+          ) : view === 'onboarding' ? (
+            <TableroOnboarding clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} />
           ) : view === 'owners' ? (
             <TableroOwners clientes={filteredClientes} owners={owners} equipo={equipo} onSelectCliente={setSelectedCliente} onUpdate={loadData} />
           ) : view === 'produccion' ? (
