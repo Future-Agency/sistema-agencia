@@ -386,12 +386,19 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
                     <td style={{ color: '#4a4a60', fontSize: 11 }}>{i + 1}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => setSelectedAccount(acc)}>
-                        <div style={{ width: 28, height: 28, borderRadius: 6, background: 'linear-gradient(135deg, #1877F2, #0866FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <i className="fab fa-meta" style={{ fontSize: 13, color: '#fff' }} />
+                        <div style={{
+                          width: 28, height: 28, borderRadius: 6,
+                          background: acc.platform === 'manual' ? 'linear-gradient(135deg, #f5a623, #fc6e51)' : 'linear-gradient(135deg, #1877F2, #0866FF)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                        }}>
+                          <i className={acc.platform === 'manual' ? 'fas fa-user-edit' : 'fab fa-meta'} style={{ fontSize: 13, color: '#fff' }} />
                         </div>
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: 13, color: '#5e72e4' }}>{acc.account_name}</div>
-                          <div style={{ fontSize: 9, color: '#4a4a60' }}>{acc.account_id}</div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: '#5e72e4', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {acc.account_name}
+                            {acc.platform === 'manual' && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,166,35,.2)', color: '#f5a623', fontWeight: 700 }}>MANUAL</span>}
+                          </div>
+                          <div style={{ fontSize: 9, color: '#4a4a60' }}>{acc.platform === 'manual' ? 'Sin cuenta Meta' : acc.account_id}</div>
                         </div>
                       </div>
                     </td>

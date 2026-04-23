@@ -17,6 +17,9 @@ export default function GestionCuentasModal({ agenciaId, agencias, clientes, onC
   const [loading, setLoading] = useState(true)
   const [discovering, setDiscovering] = useState(false)
   const [discoverResult, setDiscoverResult] = useState<string>('')
+  const [showAddManual, setShowAddManual] = useState(false)
+  const [manualClienteId, setManualClienteId] = useState<number | ''>('')
+  const [manualCurrency, setManualCurrency] = useState('ARS')
 
   useEffect(() => { load() }, [])
 
@@ -69,6 +72,26 @@ export default function GestionCuentasModal({ agenciaId, agencias, clientes, onC
     setTimeout(() => setDiscoverResult(''), 8000)
   }
 
+  async function addManualCliente() {
+    if (!manualClienteId) return
+    const cliente = clientes.find(c => c.id === manualClienteId)
+    if (!cliente) return
+    await supabase.from('ad_accounts').insert({
+      account_id: `manual:${cliente.id}:${Date.now()}`,
+      account_name: cliente.nombre,
+      platform: 'manual',
+      currency: manualCurrency,
+      account_status: 1,
+      activo: true,
+      agencia_id: agenciaId,
+      cliente_id: cliente.id,
+      spend: 0, impressions: 0, clicks: 0, ctr: 0, cpc: 0,
+      messages: 0, purchases: 0, leads: 0,
+    })
+    setManualClienteId(''); setShowAddManual(false)
+    load(); onUpdate()
+  }
+
   async function deleteAccount(acc: AdAccount) {
     if (!confirm(`Eliminar DEFINITIVAMENTE "${acc.account_name}"?\n\nEsto borra toda la configuracion, creativos, campañas y logs asociados.\nSi volves a sincronizar, la cuenta se va a traer de Meta de nuevo (sin tus datos).`)) return
     await supabase.from('ad_accounts').delete().eq('id', acc.id)
@@ -118,6 +141,13 @@ export default function GestionCuentasModal({ agenciaId, agencias, clientes, onC
               <i className={`fas ${showInactive ? 'fa-eye' : 'fa-eye-slash'}`} /> {showInactive ? 'Ocultando ocultas' : 'Ver ocultas'}
             </button>
             <button
+              className="btn btn-outline btn-sm"
+              onClick={() => setShowAddManual(!showAddManual)}
+              style={{ color: '#f5a623', borderColor: '#f5a62355' }}
+            >
+              <i className={`fas ${showAddManual ? 'fa-times' : 'fa-user-plus'}`} /> {showAddManual ? 'Cancelar' : 'Agregar cliente sin Meta'}
+            </button>
+            <button
               className="btn btn-primary btn-sm"
               onClick={discoverNew}
               disabled={discovering}
@@ -126,6 +156,42 @@ export default function GestionCuentasModal({ agenciaId, agencias, clientes, onC
               <i className={`fas ${discovering ? 'fa-spinner fa-spin' : 'fa-plus-circle'}`} /> {discovering ? 'Buscando...' : 'Traer cuentas nuevas'}
             </button>
           </div>
+
+          {showAddManual && (
+            <div style={{ padding: 12, background: 'rgba(245,166,35,.08)', border: '1px solid #f5a62333', borderRadius: 8, marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#f5a623', marginBottom: 8, fontWeight: 600 }}>
+                <i className="fas fa-info-circle" style={{ marginRight: 6 }} />
+                Agrega un cliente al tablero Anuncios aunque aun no tenga cuenta de Meta conectada. Va a aparecer con metricas en 0 para que puedas cargar estrategia, campanas y creativos manualmente.
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select
+                  className="select-custom"
+                  value={manualClienteId}
+                  onChange={e => setManualClienteId(e.target.value ? parseInt(e.target.value) : '')}
+                  style={{ flex: 1, fontSize: 12 }}
+                >
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes
+                    .filter(c => c.agencia_id === agenciaId)
+                    .filter(c => !accounts.some(a => a.cliente_id === c.id))
+                    .map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+                <select
+                  className="select-custom"
+                  value={manualCurrency}
+                  onChange={e => setManualCurrency(e.target.value)}
+                  style={{ width: 90, fontSize: 12 }}
+                >
+                  <option value="ARS">ARS</option>
+                  <option value="USD">USD</option>
+                  <option value="BRL">BRL</option>
+                </select>
+                <button className="btn btn-primary btn-sm" onClick={addManualCliente} disabled={!manualClienteId}>
+                  <i className="fas fa-plus" /> Agregar
+                </button>
+              </div>
+            </div>
+          )}
 
           {discoverResult && (
             <div style={{ padding: 10, borderRadius: 8, background: discoverResult.startsWith('Error') ? 'rgba(245,54,92,.08)' : 'rgba(0,217,126,.08)', border: `1px solid ${discoverResult.startsWith('Error') ? '#f5365c33' : '#00d97e33'}`, marginBottom: 12, fontSize: 12, color: discoverResult.startsWith('Error') ? '#f5365c' : '#00d97e' }}>
@@ -156,13 +222,20 @@ export default function GestionCuentasModal({ agenciaId, agencias, clientes, onC
                   return (
                     <tr key={acc.id} style={{ opacity: acc.activo ? 1 : 0.5 }}>
                       <td>
-                        <div style={{ width: 24, height: 24, borderRadius: 5, background: 'linear-gradient(135deg, #1877F2, #0866FF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <i className="fab fa-meta" style={{ color: '#fff', fontSize: 10 }} />
+                        <div style={{
+                          width: 24, height: 24, borderRadius: 5,
+                          background: acc.platform === 'manual' ? 'linear-gradient(135deg, #f5a623, #fc6e51)' : 'linear-gradient(135deg, #1877F2, #0866FF)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          <i className={acc.platform === 'manual' ? 'fas fa-user' : 'fab fa-meta'} style={{ color: '#fff', fontSize: 10 }} />
                         </div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: 600, fontSize: 12 }}>{acc.account_name}</div>
-                        <div style={{ fontSize: 9, color: '#6a6a80' }}>{acc.account_id} · {acc.currency}</div>
+                        <div style={{ fontWeight: 600, fontSize: 12 }}>
+                          {acc.account_name}
+                          {acc.platform === 'manual' && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: 'rgba(245,166,35,.2)', color: '#f5a623', marginLeft: 6, fontWeight: 600 }}>MANUAL</span>}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#6a6a80' }}>{acc.platform === 'manual' ? 'Sin cuenta Meta · ' : ''}{acc.account_id.startsWith('manual:') ? 'placeholder' : acc.account_id} · {acc.currency}</div>
                       </td>
                       <td>
                         <select
