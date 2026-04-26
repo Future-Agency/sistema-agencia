@@ -264,7 +264,14 @@ function SeccionBranding({ cliente, config, onUpdate, showToast }: { cliente: Cl
     <div style={{ maxWidth: 700 }}>
       <Card title="Branding del portal" desc="Como se ve el portal para tu cliente">
         <Field label="Nombre de la interfaz"><input value={form.nombre_interfaz} onChange={e => setForm({ ...form, nombre_interfaz: e.target.value })} style={inputStyle} placeholder={`Portal ${cliente.nombre}`} /></Field>
-        <Field label="Logo URL (opcional)"><input value={form.logo_url} onChange={e => setForm({ ...form, logo_url: e.target.value })} style={inputStyle} placeholder="https://..." /></Field>
+        <Field label="Logo del cliente">
+          <LogoUploader
+            clienteId={cliente.id}
+            value={form.logo_url}
+            onChange={url => setForm({ ...form, logo_url: url })}
+            showToast={showToast}
+          />
+        </Field>
         <Field label="Color primario">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="color" value={form.color_primario} onChange={e => setForm({ ...form, color_primario: e.target.value })} style={{ width: 50, height: 38, border: '1px solid #2a2a40', borderRadius: 8, cursor: 'pointer', background: 'transparent' }} />
@@ -668,6 +675,121 @@ function SeccionSugerencias({ sugerencias, onUpdate, showToast }: { sugerencias:
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// =============== LOGO UPLOADER ===============
+function LogoUploader({ clienteId, value, onChange, showToast }: { clienteId: number; value: string; onChange: (url: string) => void; showToast: (m: string, t: 'success' | 'error') => void }) {
+  const [uploading, setUploading] = useState(false)
+  const [showUrlInput, setShowUrlInput] = useState(false)
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) {
+      showToast('Solo imagenes (PNG, JPG, WEBP, SVG, GIF)', 'error')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Maximo 5MB', 'error')
+      return
+    }
+    setUploading(true)
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+      const path = `cliente-${clienteId}/logo-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('client-logos').upload(path, file, {
+        upsert: true,
+        contentType: file.type,
+        cacheControl: '3600',
+      })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('client-logos').getPublicUrl(path)
+      onChange(pub.publicUrl)
+      showToast('Logo subido', 'success')
+    } catch (e: any) {
+      showToast('Error al subir: ' + (e.message || ''), 'error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleFile(file)
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        {/* Preview */}
+        <div style={{
+          width: 100, height: 100, flexShrink: 0,
+          background: '#0a0a14', border: '1px solid #2a2a40', borderRadius: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          overflow: 'hidden', position: 'relative',
+        }}>
+          {value ? (
+            <img src={value} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          ) : (
+            <i className="fas fa-image" style={{ fontSize: 28, color: '#3a3a55' }} />
+          )}
+        </div>
+
+        {/* Drop zone + boton */}
+        <div style={{ flex: 1 }}>
+          <label
+            onDragOver={e => e.preventDefault()}
+            onDrop={handleDrop}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '18px 14px', minHeight: 100,
+              background: '#0a0a14',
+              border: '2px dashed #2a2a40',
+              borderRadius: 12,
+              cursor: uploading ? 'wait' : 'pointer',
+              transition: 'border-color 0.2s, background 0.2s',
+              gap: 6,
+            }}
+            onMouseEnter={e => { if (!uploading) (e.currentTarget as HTMLLabelElement).style.borderColor = '#5e72e4' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLLabelElement).style.borderColor = '#2a2a40' }}
+          >
+            <input type="file" accept="image/*" disabled={uploading} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} style={{ display: 'none' }} />
+            {uploading ? (
+              <>
+                <i className="fas fa-spinner fa-spin" style={{ fontSize: 22, color: '#5e72e4' }} />
+                <span style={{ fontSize: 12, color: '#a0a0b8' }}>Subiendo...</span>
+              </>
+            ) : (
+              <>
+                <i className="fas fa-cloud-upload-alt" style={{ fontSize: 22, color: '#5e72e4' }} />
+                <span style={{ fontSize: 13, color: '#e8e8f0', fontWeight: 600 }}>Subir archivo o arrastrar aqui</span>
+                <span style={{ fontSize: 10, color: '#6a6a80' }}>PNG, JPG, WEBP, SVG · max 5MB</span>
+              </>
+            )}
+          </label>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {value && (
+          <button onClick={() => onChange('')} style={{ ...btnGhost, fontSize: 11, color: '#f5365c', borderColor: '#f5365c44' }}>
+            <i className="fas fa-times" /> Quitar logo
+          </button>
+        )}
+        <button onClick={() => setShowUrlInput(!showUrlInput)} style={{ ...btnGhost, fontSize: 11 }}>
+          <i className="fas fa-link" /> {showUrlInput ? 'Ocultar URL' : 'Pegar URL externa'}
+        </button>
+      </div>
+
+      {showUrlInput && (
+        <input
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="https://..."
+          style={{ ...inputStyle, marginTop: 8 }}
+        />
+      )}
     </div>
   )
 }
