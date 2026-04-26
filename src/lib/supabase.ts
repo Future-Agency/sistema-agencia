@@ -215,6 +215,122 @@ export type Equipo = {
   activo: boolean
 }
 
+// ============== PORTAL CLIENTE ==============
+
+export type ClientePortalAcceso = {
+  id: number
+  cliente_id: number
+  slug: string
+  username: string
+  password: string
+  activo: boolean
+  last_login: string | null
+  created_at: string
+}
+
+export type ClientePortalConfig = {
+  id: number
+  cliente_id: number
+  nombre_interfaz: string | null
+  logo_url: string | null
+  color_primario: string
+  fecha_inicio_servicio: string | null
+  monto_mensual: number | null
+  moneda: string
+  dia_pago: number | null
+  notas_cliente: string | null
+  estrategia: string | null
+  bienvenida: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ClienteAprobacion = {
+  id: number
+  cliente_id: number
+  tipo: 'reel' | 'historia' | 'carrousel' | 'anuncio' | 'guion'
+  titulo: string
+  descripcion: string | null
+  url_preview: string | null
+  estado: 'pendiente' | 'aprobado' | 'cambios_solicitados'
+  comentario_cliente: string | null
+  fecha_aprobacion: string | null
+  visto_por_cliente: boolean
+  visto_por_agencia: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type ClienteObjetivo = {
+  id: number
+  cliente_id: number
+  titulo: string
+  descripcion: string | null
+  estado: 'activo' | 'logrado' | 'cancelado'
+  fecha_inicio: string
+  fecha_logrado: string | null
+  resultado: string | null
+  created_at: string
+}
+
+export type ClienteSugerencia = {
+  id: number
+  cliente_id: number
+  texto: string
+  estado: 'nueva' | 'en_revision' | 'implementada' | 'descartada'
+  respuesta_agencia: string | null
+  visto_por_agencia: boolean
+  created_at: string
+}
+
+export type ClientePago = {
+  id: number
+  cliente_id: number
+  fecha: string
+  monto: number
+  moneda: string
+  concepto: string | null
+  estado: 'pendiente' | 'pagado' | 'vencido'
+  metodo: string | null
+  comprobante_url: string | null
+  created_at: string
+}
+
+export type ClienteAcceso = {
+  id: number
+  cliente_id: number
+  tipo: string
+  nombre: string
+  url: string | null
+  usuario: string | null
+  notas: string | null
+  created_at: string
+}
+
+export type ClienteTutorial = {
+  id: number
+  agencia_id: string
+  titulo: string
+  descripcion: string | null
+  categoria: string | null
+  url: string
+  orden: number
+  activo: boolean
+  created_at: string
+}
+
+export type ClienteCalendario = {
+  id: number
+  cliente_id: number
+  fecha: string
+  tipo: string | null
+  titulo: string
+  descripcion: string | null
+  estado: 'programado' | 'publicado' | 'cancelado'
+  url: string | null
+  created_at: string
+}
+
 export const FASES_ONBOARDING = [
   { id: 'crear_grupo', name: 'Crear Grupo', defaultDays: 1, icon: 'fa-users' },
   { id: 'envio_form', name: 'Envio Formulario Onboarding', defaultDays: 2, icon: 'fa-file-alt' },
