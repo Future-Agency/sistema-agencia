@@ -1,9 +1,10 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Cliente, Owner, AdAccount, PeriodMetrics } from '@/lib/supabase'
 import GestionAnuncio from './GestionAnuncio'
 import GestionCuentasModal from './GestionCuentasModal'
+import CambiosSinEvaluarModal from './CambiosSinEvaluarModal'
 import type { Agencia } from '@/lib/supabase'
 
 type Props = { clientes: Cliente[]; owners: Owner[]; adAccounts: AdAccount[]; onUpdate: () => void; agencias?: Agencia[]; agenciaId?: string }
@@ -111,6 +112,22 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<string>('')
   const [showManageModal, setShowManageModal] = useState(false)
+  const [showCambiosModal, setShowCambiosModal] = useState(false)
+  const [pendingCount, setPendingCount] = useState<number>(0)
+
+  // Contar cambios sin evaluar de las cuentas de esta agencia
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const accountIds = adAccounts.filter(a => a.activo).map(a => a.id)
+      if (accountIds.length === 0) { if (!cancelled) setPendingCount(0); return }
+      const { count } = await supabase.from('ad_cambios_log').select('*', { count: 'exact', head: true })
+        .in('ad_account_id', accountIds)
+        .or('resultado.is.null,resultado.eq.')
+      if (!cancelled) setPendingCount(count || 0)
+    })()
+    return () => { cancelled = true }
+  }, [adAccounts, showCambiosModal])
 
   async function syncMetaAds() {
     setSyncing(true); setSyncStatus('')
@@ -242,6 +259,12 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
           onUpdate={onUpdate}
         />
       )}
+      {showCambiosModal && (
+        <CambiosSinEvaluarModal
+          agenciaId={agenciaId}
+          onClose={() => setShowCambiosModal(false)}
+        />
+      )}
       {/* Period toggle + export */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4, background: '#1a1a28', padding: 4, borderRadius: 10 }}>
@@ -277,6 +300,21 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
               Ultima sync: {new Date(lastSync).toLocaleString('es-AR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
+          <button className="btn btn-sm" onClick={() => setShowCambiosModal(true)} style={{
+            fontSize: 11,
+            background: pendingCount > 0 ? 'rgba(245,166,35,.15)' : 'transparent',
+            border: `1px solid ${pendingCount > 0 ? '#f5a62355' : '#2a2a40'}`,
+            color: pendingCount > 0 ? '#f5a623' : '#8a8aa0',
+            position: 'relative',
+          }}>
+            <i className="fas fa-hourglass-half" /> Cambios sin evaluar
+            {pendingCount > 0 && (
+              <span style={{
+                marginLeft: 6, padding: '1px 7px', borderRadius: 10,
+                background: '#f5a623', color: '#0a0a14', fontSize: 10, fontWeight: 800,
+              }}>{pendingCount}</span>
+            )}
+          </button>
           <button className="btn btn-outline btn-sm" onClick={() => setShowManageModal(true)} style={{ fontSize: 11 }}>
             <i className="fas fa-cog" /> Gestionar cuentas
           </button>
