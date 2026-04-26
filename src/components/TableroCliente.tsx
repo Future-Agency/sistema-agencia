@@ -4,6 +4,7 @@ import { supabase, type Cliente, type Owner, type Equipo, type FaseCliente, type
 import { updateEstado } from '@/lib/estadoHelper'
 import { SemaforoIcon, Badge } from './ui'
 import { generarReportePDF } from '@/lib/reportePDF'
+import PortalClienteAdmin from './PortalClienteAdmin'
 
 type Props = { cliente: Cliente; owners: Owner[]; equipo: Equipo[]; adAccounts: AdAccount[]; onBack: () => void; onUpdate: () => void; onDelete: () => void; showToast: (msg: string, type: 'success' | 'error') => void }
 
@@ -17,6 +18,7 @@ export default function TableroCliente({ cliente, owners, equipo, adAccounts, on
   const [reportes, setReportes] = useState<Reporte[]>([])
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showPortalAdmin, setShowPortalAdmin] = useState(false)
   const [form, setForm] = useState({ ...cliente })
   const owner = owners.find(o => o.id === cliente.owner_id)
 
@@ -144,6 +146,9 @@ export default function TableroCliente({ cliente, owners, equipo, adAccounts, on
               <i className="fas fa-file-pdf" /> Reporte PDF {cuentasCliente.length > 0 ? `(${cuentasCliente.length})` : ''}
             </button>
           </div>
+          <button className="btn btn-sm" style={{ background: 'linear-gradient(135deg, #11cdef, #5e72e4)', color: 'white' }} onClick={() => setShowPortalAdmin(true)} title="Configurar el portal del cliente">
+            <i className="fas fa-id-card" /> Portal Cliente
+          </button>
           <button className="btn btn-outline btn-sm" onClick={() => setEditing(!editing)}>
             <i className={`fas ${editing ? 'fa-times' : 'fa-pen'}`} /> {editing ? 'Cancelar' : 'Editar'}
           </button>
@@ -297,6 +302,8 @@ export default function TableroCliente({ cliente, owners, equipo, adAccounts, on
           </div>
         </div>
       )}
+
+      {showPortalAdmin && <PortalClienteAdmin cliente={cliente} onClose={() => setShowPortalAdmin(false)} showToast={showToast} />}
 
       {tab === 'notas' && (
         <div className="card">
