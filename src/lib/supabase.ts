@@ -339,6 +339,7 @@ export type ClienteAprobacion = {
   visto_por_agencia: boolean
   funnel: FunnelStage | null
   dur: string | null
+  texto_guion: string | null
   created_at: string
   updated_at: string
 }

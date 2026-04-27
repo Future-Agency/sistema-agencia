@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { supabase, type ClienteAprobacion, type FunnelStage } from '@/lib/supabase'
 import { FUNNEL_INFO, FunnelPill, TipoBadge } from './ui'
+import VideoPreview, { GuionPreview } from './VideoPreview'
 
 type Props = {
   aprobaciones: ClienteAprobacion[]
@@ -21,6 +22,8 @@ export default function PortalSeccionAprobaciones({ aprobaciones, onUpdate }: Pr
   const [funnelFiltro, setFunnelFiltro] = useState<'todos' | FunnelStage>('todos')
   const [comentando, setComentando] = useState<number | null>(null)
   const [comentario, setComentario] = useState('')
+  const [verVideo, setVerVideo] = useState<{ url: string; titulo: string } | null>(null)
+  const [verGuion, setVerGuion] = useState<{ titulo: string; texto: string } | null>(null)
 
   const filtradas = aprobaciones.filter(a => {
     if (filtro !== 'todos' && a.estado !== filtro) return false
@@ -116,6 +119,18 @@ export default function PortalSeccionAprobaciones({ aprobaciones, onUpdate }: Pr
             const isCam = a.estado === 'cambios_solicitados'
             const estadoColor = isApr ? 'var(--ok)' : isCam ? 'var(--warn)' : 'var(--brand-blue)'
             const f = a.funnel ? FUNNEL_INFO[a.funnel] : null
+            const esGuion = a.tipo === 'guion'
+            const tieneTexto = !!a.texto_guion?.trim()
+            const tieneVideo = !!a.url_preview
+            const puedeVer = tieneVideo || (esGuion && tieneTexto)
+
+            function abrir() {
+              if (esGuion && tieneTexto) {
+                setVerGuion({ titulo: a.titulo, texto: a.texto_guion! })
+              } else if (a.url_preview) {
+                setVerVideo({ url: a.url_preview, titulo: a.titulo })
+              }
+            }
 
             return (
               <div key={a.id} className="fa-card" style={{ padding: 0, border: `1px solid ${isPend ? 'rgba(36,56,255,0.3)' : 'var(--border)'}`, overflow: 'hidden' }}>
@@ -141,19 +156,43 @@ export default function PortalSeccionAprobaciones({ aprobaciones, onUpdate }: Pr
                       <span style={{ padding: '4px 10px', background: `color-mix(in srgb, ${estadoColor} 18%, transparent)`, color: estadoColor, borderRadius: 12, fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>
                         {a.estado.replace('_', ' ')}
                       </span>
-                      <div className="fa-stripes" style={{ width: 110, height: 70, borderRadius: 8 }}>
+                      <button
+                        onClick={puedeVer ? abrir : undefined}
+                        className="fa-stripes"
+                        style={{
+                          width: 110, height: 70, borderRadius: 8,
+                          border: 0, padding: 0,
+                          cursor: puedeVer ? 'pointer' : 'default',
+                          background: undefined,
+                        }}
+                        title={puedeVer ? (esGuion ? 'Ver guion' : 'Ver material') : ''}
+                      >
                         <div style={{ textAlign: 'center', padding: 4 }}>
-                          <i className="fas fa-play" style={{ fontSize: 14, color: 'var(--text)' }} />
-                          <div style={{ fontSize: 8, marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>preview</div>
+                          <i className={`fas ${esGuion ? 'fa-scroll' : 'fa-play'}`} style={{ fontSize: 14, color: 'var(--text)' }} />
+                          <div style={{ fontSize: 8, marginTop: 3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{esGuion ? 'guion' : 'preview'}</div>
                         </div>
-                      </div>
+                      </button>
                     </div>
                   </div>
 
-                  {a.url_preview && (
-                    <a href={a.url_preview} target="_blank" rel="noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: 'var(--bg-1)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--text-muted)', fontSize: 12, textDecoration: 'none', marginBottom: 10 }}>
-                      <i className="fas fa-external-link-alt" /> Ver material en Drive
-                    </a>
+                  {puedeVer && (
+                    <button
+                      onClick={abrir}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '7px 12px',
+                        background: 'var(--bg-1)',
+                        border: '1px solid var(--border-2)',
+                        borderRadius: 8,
+                        color: 'var(--text)',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        marginBottom: 10,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {esGuion ? <><i className="fas fa-scroll" /> Leer guion</> : <><i className="fas fa-play-circle" /> Ver video</>}
+                    </button>
                   )}
 
                   {a.comentario_cliente && (
@@ -187,6 +226,9 @@ export default function PortalSeccionAprobaciones({ aprobaciones, onUpdate }: Pr
           })}
         </div>
       )}
+
+      {verVideo && <VideoPreview url={verVideo.url} titulo={verVideo.titulo} onClose={() => setVerVideo(null)} />}
+      {verGuion && <GuionPreview titulo={verGuion.titulo} texto={verGuion.texto} onClose={() => setVerGuion(null)} />}
     </div>
   )
 }
