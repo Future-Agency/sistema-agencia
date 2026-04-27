@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, type AdAccount, type AdAccountConfig, type AdCambioLog, type AdCreativo, type AdCampana, type PeriodMetrics, type Cliente } from '@/lib/supabase'
+import { supabase, type AdAccount, type AdAccountConfig, type AdCambioLog, type AdCreativo, type AdCampana, type PeriodMetrics, type Cliente, type AdRevision } from '@/lib/supabase'
 
 type Props = {
   account: AdAccount
@@ -27,12 +27,17 @@ function extractMetrics(acc: AdAccount, period: '7d' | '15d' | '30d'): PeriodMet
 }
 
 export default function GestionAnuncio({ account, cliente, onBack }: Props) {
-  const [tab, setTab] = useState<'overview' | 'estrategia' | 'creativos' | 'campanas' | 'cambios'>('overview')
+  const [tab, setTab] = useState<'overview' | 'estrategia' | 'creativos' | 'campanas' | 'cambios' | 'revisiones'>('overview')
   const [period, setPeriod] = useState<'7d' | '15d' | '30d'>('30d')
   const [config, setConfig] = useState<AdAccountConfig | null>(null)
   const [cambios, setCambios] = useState<AdCambioLog[]>([])
   const [creativos, setCreativos] = useState<AdCreativo[]>([])
   const [campanas, setCampanas] = useState<AdCampana[]>([])
+  const [revisiones, setRevisiones] = useState<AdRevision[]>([])
+  const [revisionPeriodo, setRevisionPeriodo] = useState<'semana' | 'mes'>('semana')
+  const [revisionForm, setRevisionForm] = useState<{ id: number | null; periodo: 'semana' | 'mes'; fecha: string; titulo: string; informe: string; insights: string; plan_accion: string }>({ id: null, periodo: 'semana', fecha: new Date().toISOString().split('T')[0], titulo: '', informe: '', insights: '', plan_accion: '' })
+  const [showRevisionForm, setShowRevisionForm] = useState(false)
+  const [revisionExpandida, setRevisionExpandida] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
   // Form states
@@ -54,12 +59,14 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
   useEffect(() => { loadData() }, [account.id])
 
   async function loadData() {
-    const [cfgRes, cambiosRes, creativosRes, campanasRes] = await Promise.all([
+    const [cfgRes, cambiosRes, creativosRes, campanasRes, revisionesRes] = await Promise.all([
       supabase.from('ad_account_config').select('*').eq('ad_account_id', account.id).maybeSingle(),
       supabase.from('ad_cambios_log').select('*').eq('ad_account_id', account.id).order('fecha', { ascending: false }),
       supabase.from('ad_creativos').select('*').eq('ad_account_id', account.id).order('created_at', { ascending: false }),
       supabase.from('ad_campanas').select('*').eq('ad_account_id', account.id).order('created_at', { ascending: false }),
+      supabase.from('ad_revisiones').select('*').eq('ad_account_id', account.id).order('fecha', { ascending: false }),
     ])
+    if (revisionesRes.data) setRevisiones(revisionesRes.data)
     if (cfgRes.data) {
       setConfig(cfgRes.data)
       setConfigForm({
@@ -128,6 +135,53 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
       resultado: editCambioForm.resultado,
     }).eq('id', editingCambio)
     setEditingCambio(null)
+    loadData()
+  }
+
+  // ===== Revisiones =====
+  function nuevaRevision(periodo: 'semana' | 'mes') {
+    const hoy = new Date().toISOString().split('T')[0]
+    setRevisionForm({ id: null, periodo, fecha: hoy, titulo: '', informe: '', insights: '', plan_accion: '' })
+    setShowRevisionForm(true)
+  }
+
+  function editarRevision(r: AdRevision) {
+    setRevisionForm({
+      id: r.id, periodo: r.periodo, fecha: r.fecha,
+      titulo: r.titulo || '', informe: r.informe || '', insights: r.insights || '', plan_accion: r.plan_accion || '',
+    })
+    setShowRevisionForm(true)
+  }
+
+  async function saveRevision() {
+    if (!revisionForm.informe.trim() && !revisionForm.insights.trim() && !revisionForm.plan_accion.trim()) return
+    const snapshot: PeriodMetrics = {
+      spend: metrics.spend, impressions: metrics.impressions, clicks: metrics.clicks,
+      ctr: metrics.ctr, cpc: metrics.cpc, purchases: metrics.purchases, leads: metrics.leads,
+      messages: metrics.messages, purchase_value: metrics.purchase_value,
+    }
+    const payload = {
+      ad_account_id: account.id,
+      periodo: revisionForm.periodo, fecha: revisionForm.fecha,
+      titulo: revisionForm.titulo || null,
+      informe: revisionForm.informe || null,
+      insights: revisionForm.insights || null,
+      plan_accion: revisionForm.plan_accion || null,
+      metricas_snapshot: revisionForm.id ? undefined : snapshot,
+      updated_at: new Date().toISOString(),
+    }
+    if (revisionForm.id) {
+      await supabase.from('ad_revisiones').update(payload).eq('id', revisionForm.id)
+    } else {
+      await supabase.from('ad_revisiones').insert(payload)
+    }
+    setShowRevisionForm(false)
+    loadData()
+  }
+
+  async function deleteRevision(id: number) {
+    if (!confirm('Eliminar esta revision?')) return
+    await supabase.from('ad_revisiones').delete().eq('id', id)
     loadData()
   }
 
@@ -281,6 +335,7 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
           { key: 'campanas', label: `Campanas (${campanas.length})`, icon: 'fa-sitemap' },
           { key: 'creativos', label: `Creativos (${creativos.length})`, icon: 'fa-paint-brush' },
           { key: 'cambios', label: `Cambios (${cambios.length})`, icon: 'fa-history' },
+          { key: 'revisiones', label: `Revisiones (${revisiones.length})`, icon: 'fa-clipboard-check' },
         ] as const).map(t => (
           <div key={t.key} className={`tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key as any)}>
             <i className={`fas ${t.icon}`} style={{ marginRight: 4, fontSize: 11 }} />{t.label}
@@ -565,6 +620,170 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: Revisiones */}
+      {tab === 'revisiones' && (
+        <div className="card">
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontWeight: 600 }}>Revisiones del Equipo</span>
+              <div style={{ display: 'flex', gap: 4, background: '#0a0a14', border: '1px solid #2a2a40', borderRadius: 8, padding: 3 }}>
+                {(['semana', 'mes'] as const).map(p => (
+                  <button key={p} onClick={() => setRevisionPeriodo(p)} style={{
+                    padding: '5px 12px',
+                    background: revisionPeriodo === p ? '#5e72e4' : 'transparent',
+                    border: 'none', borderRadius: 6,
+                    color: revisionPeriodo === p ? '#fff' : '#a0a0b8',
+                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  }}>
+                    {p === 'semana' ? 'Semanal' : 'Mensual'} ({revisiones.filter(r => r.periodo === p).length})
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => nuevaRevision(revisionPeriodo)}>
+              <i className="fas fa-plus" /> Nueva revision {revisionPeriodo === 'semana' ? 'semanal' : 'mensual'}
+            </button>
+          </div>
+          <div className="card-body">
+            {showRevisionForm && (
+              <div style={{ padding: 16, background: '#1a1a28', borderRadius: 8, marginBottom: 16, border: '1px solid #5e72e455' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#5e72e4' }}>
+                    <i className={`fas ${revisionForm.id ? 'fa-pen' : 'fa-plus'}`} style={{ marginRight: 6 }} />
+                    {revisionForm.id ? 'Editar' : 'Nueva'} revision {revisionForm.periodo === 'semana' ? 'semanal' : 'mensual'}
+                  </span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowRevisionForm(false)}><i className="fas fa-times" /></button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '140px 140px 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="label">Periodo</label>
+                    <select className="select-custom" style={{ width: '100%' }} value={revisionForm.periodo} onChange={e => setRevisionForm({ ...revisionForm, periodo: e.target.value as 'semana' | 'mes' })}>
+                      <option value="semana">Semanal</option>
+                      <option value="mes">Mensual</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="label">Fecha</label>
+                    <input className="input" type="date" value={revisionForm.fecha} onChange={e => setRevisionForm({ ...revisionForm, fecha: e.target.value })} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="label">Titulo (opcional)</label>
+                    <input className="input" placeholder={revisionForm.periodo === 'semana' ? 'Ej: Semana 17 abr — testeo audiencias' : 'Ej: Cierre abril 2026'} value={revisionForm.titulo} onChange={e => setRevisionForm({ ...revisionForm, titulo: e.target.value })} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="label"><i className="fas fa-file-lines" style={{ marginRight: 5, color: '#5e72e4' }} />Informe — que paso esta {revisionForm.periodo === 'semana' ? 'semana' : 'mes'}</label>
+                  <textarea className="input textarea" placeholder={'Resumen ejecutivo: que se hizo, que paso con la inversion, las metricas, las campanas...'} style={{ minHeight: 100 }} value={revisionForm.informe} onChange={e => setRevisionForm({ ...revisionForm, informe: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="label"><i className="fas fa-lightbulb" style={{ marginRight: 5, color: '#f5a623' }} />Insights — que aprendimos</label>
+                  <textarea className="input textarea" placeholder={'Hallazgos, patrones, hipotesis validadas o caidas. Lo que el equipo no quiere olvidar.'} style={{ minHeight: 90 }} value={revisionForm.insights} onChange={e => setRevisionForm({ ...revisionForm, insights: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label className="label"><i className="fas fa-bullseye" style={{ marginRight: 5, color: '#00d97e' }} />Plan de accion — que hacemos la {revisionForm.periodo === 'semana' ? 'proxima semana' : 'proximo mes'}</label>
+                  <textarea className="input textarea" placeholder={'Acciones concretas: subir presupuesto X, lanzar creativo Y, pausar Z, testear W...'} style={{ minHeight: 90 }} value={revisionForm.plan_accion} onChange={e => setRevisionForm({ ...revisionForm, plan_accion: e.target.value })} />
+                </div>
+                {!revisionForm.id && (
+                  <div style={{ padding: '8px 12px', background: 'rgba(94,114,228,.08)', border: '1px solid #5e72e433', borderRadius: 6, fontSize: 11, color: '#a0a0b8', marginBottom: 10 }}>
+                    <i className="fas fa-camera" style={{ marginRight: 6, color: '#5e72e4' }} />
+                    Vamos a guardar un snapshot de las metricas actuales ({period}) para poder comparar despues.
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-primary btn-sm" onClick={saveRevision}><i className="fas fa-save" /> {revisionForm.id ? 'Guardar cambios' : 'Crear revision'}</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => setShowRevisionForm(false)}>Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {(() => {
+              const list = revisiones.filter(r => r.periodo === revisionPeriodo)
+              if (list.length === 0 && !showRevisionForm) {
+                return (
+                  <div style={{ textAlign: 'center', padding: 32, color: '#6a6a80' }}>
+                    <i className="fas fa-clipboard-check" style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }} />
+                    <div>Sin revisiones {revisionPeriodo === 'semana' ? 'semanales' : 'mensuales'}</div>
+                    <div style={{ fontSize: 11, marginTop: 4 }}>Cargá la primera revisión cuando termines la reunión del equipo</div>
+                  </div>
+                )
+              }
+              return list.map(r => {
+                const isOpen = revisionExpandida === r.id
+                const f = new Date(r.fecha + 'T12:00:00')
+                const fechaLabel = f.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
+                const snap = r.metricas_snapshot
+                return (
+                  <div key={r.id} style={{ marginBottom: 10, background: '#1a1a28', borderRadius: 8, border: isOpen ? '1px solid #5e72e466' : '1px solid #2a2a40', overflow: 'hidden' }}>
+                    <div onClick={() => setRevisionExpandida(isOpen ? null : r.id)} style={{ padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+                        <i className={`fas fa-chevron-${isOpen ? 'down' : 'right'}`} style={{ color: '#6a6a80', fontSize: 11 }} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#e8e8f0' }}>{fechaLabel}</span>
+                            <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: r.periodo === 'semana' ? 'rgba(94,114,228,.15)' : 'rgba(245,166,35,.15)', color: r.periodo === 'semana' ? '#5e72e4' : '#f5a623', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              {r.periodo === 'semana' ? 'Semanal' : 'Mensual'}
+                            </span>
+                          </div>
+                          {r.titulo ? (
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{r.titulo}</div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: '#a0a0b8', fontStyle: 'italic' }}>Sin titulo</div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => editarRevision(r)} style={{ color: '#5e72e4' }}><i className="fas fa-pen" /></button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => deleteRevision(r.id)} style={{ color: '#f5365c' }}><i className="fas fa-trash" /></button>
+                      </div>
+                    </div>
+                    {isOpen && (
+                      <div style={{ padding: '0 14px 14px 36px', borderTop: '1px solid #2a2a40' }}>
+                        {snap && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '10px 12px', background: '#0a0a14', border: '1px solid #2a2a40', borderRadius: 6, marginTop: 12, fontSize: 11, fontFamily: 'ui-monospace, monospace' }}>
+                            <span style={{ color: '#6a6a80' }}>SNAPSHOT:</span>
+                            {snap.spend !== undefined && <span><span style={{ color: '#6a6a80' }}>spend</span> <strong>{fmtMoney(snap.spend, account.currency)}</strong></span>}
+                            {snap.purchase_value !== undefined && snap.purchase_value > 0 && <span><span style={{ color: '#6a6a80' }}>valor</span> <strong>{fmtMoney(snap.purchase_value, account.currency)}</strong></span>}
+                            {snap.spend !== undefined && (snap.purchase_value || 0) > 0 && <span><span style={{ color: '#6a6a80' }}>roas</span> <strong>{((snap.purchase_value || 0) / (snap.spend || 1)).toFixed(2)}x</strong></span>}
+                            {snap.purchases !== undefined && snap.purchases > 0 && <span><span style={{ color: '#6a6a80' }}>compras</span> <strong>{snap.purchases}</strong></span>}
+                            {snap.leads !== undefined && snap.leads > 0 && <span><span style={{ color: '#6a6a80' }}>leads</span> <strong>{snap.leads}</strong></span>}
+                            {snap.messages !== undefined && snap.messages > 0 && <span><span style={{ color: '#6a6a80' }}>msj</span> <strong>{snap.messages}</strong></span>}
+                            {snap.ctr !== undefined && <span><span style={{ color: '#6a6a80' }}>ctr</span> <strong>{fmtPct(snap.ctr)}</strong></span>}
+                          </div>
+                        )}
+                        {r.informe && (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#5e72e4', marginBottom: 4 }}>
+                              <i className="fas fa-file-lines" style={{ marginRight: 5 }} />Informe
+                            </div>
+                            <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#e8e8f0' }}>{r.informe}</div>
+                          </div>
+                        )}
+                        {r.insights && (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#f5a623', marginBottom: 4 }}>
+                              <i className="fas fa-lightbulb" style={{ marginRight: 5 }} />Insights
+                            </div>
+                            <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#e8e8f0' }}>{r.insights}</div>
+                          </div>
+                        )}
+                        {r.plan_accion && (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: '#00d97e', marginBottom: 4 }}>
+                              <i className="fas fa-bullseye" style={{ marginRight: 5 }} />Plan de accion
+                            </div>
+                            <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#e8e8f0' }}>{r.plan_accion}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            })()}
           </div>
         </div>
       )}

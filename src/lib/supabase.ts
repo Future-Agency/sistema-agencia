@@ -214,6 +214,21 @@ export type AdCampana = {
   created_at: string
 }
 
+export type AdRevision = {
+  id: number
+  ad_account_id: number
+  periodo: 'semana' | 'mes'
+  fecha: string
+  titulo: string | null
+  informe: string | null
+  insights: string | null
+  plan_accion: string | null
+  metricas_snapshot: PeriodMetrics | null
+  creada_por: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type Equipo = {
   id: string
   nombre: string
