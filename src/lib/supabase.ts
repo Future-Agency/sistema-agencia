@@ -19,6 +19,9 @@ export type Owner = {
   color: string
   activo: boolean
   agencia_id?: string
+  whatsapp?: string | null
+  iniciales?: string | null
+  avg_response?: string | null
 }
 
 export type Cliente = {
@@ -63,6 +66,8 @@ export type Cliente = {
   created_at: string
   updated_at: string
   agencia_id?: string
+  industria?: string | null
+  objetivo_meta?: string | null
 }
 
 export type FaseCliente = {
@@ -156,7 +161,9 @@ export type AdAccount = {
   metrics_7d: PeriodMetrics | null
   metrics_15d: PeriodMetrics | null
   metrics_30d: PeriodMetrics | null
+  metrics_30d_prev: PeriodMetrics | null
   agencia_id?: string
+  funnel?: FunnelStage | null
 }
 
 export type AdAccountConfig = {
@@ -228,6 +235,30 @@ export type ClientePortalAcceso = {
   created_at: string
 }
 
+export type FunnelStage = 'tofu' | 'mofu' | 'bofu'
+
+export type RoasHero = {
+  invertido: number
+  retornado: number
+  multiplicador: number
+  invertido_prev?: number
+  retornado_prev?: number
+  multiplicador_prev?: number
+  delta_compras?: number
+  delta_roas?: number
+  nota_agencia?: string
+}
+
+export type SaludItem = { ok: boolean | 'warn'; label: string; detalle?: string }
+export type SemanaItem = { dia: string; estado: 'done' | 'pending' | 'todo'; quien: 'agencia' | 'cliente'; icon: string; titulo: string; detalle?: string }
+export type Recursos = { reels: number; historias: number; anuncios: number; fotos: number }
+export type BenchmarkItem = { tu: number; promedio: number; label?: string }
+export type Benchmark = { ctr?: BenchmarkItem; roas?: BenchmarkItem }
+export type TopCreativoMetricas = { vistas: number; compras: number; valor: number; roas: number; ctr: number }
+export type TopCreativo = { titulo: string; fecha_pub?: string; funnel?: FunnelStage; metricas: TopCreativoMetricas; angle?: string; thumb_label?: string }
+export type KpiItem = { label: string; value: string; icon: string; delta?: number; tone?: string }
+export type EstrategiaSeccion = { que_hacemos: string[]; kpis: string[] }
+
 export type ClientePortalConfig = {
   id: number
   cliente_id: number
@@ -241,8 +272,57 @@ export type ClientePortalConfig = {
   notas_cliente: string | null
   estrategia: string | null
   bienvenida: string | null
+  roas_30d: RoasHero | null
+  salud: SaludItem[] | null
+  recursos: Recursos | null
+  benchmark: Benchmark | null
+  semana_items: SemanaItem[] | null
+  top_creativo: TopCreativo | null
+  estrategia_tesis: string | null
+  estrategia_tofu: EstrategiaSeccion | null
+  estrategia_mofu: EstrategiaSeccion | null
+  estrategia_bofu: EstrategiaSeccion | null
+  kpis_30d: KpiItem[] | null
   created_at: string
   updated_at: string
+}
+
+export type ClienteAlerta = {
+  id: number
+  cliente_id: number
+  fecha: string
+  tone: 'ok' | 'warn' | 'bad' | 'info'
+  texto: string
+  created_at: string
+}
+
+export type ClienteDecision = {
+  id: number
+  cliente_id: number
+  fecha: string
+  titulo: string
+  razon: string | null
+  created_at: string
+}
+
+export type ClienteRoadmap = {
+  id: number
+  cliente_id: number
+  mes: string
+  hito: string
+  descripcion: string | null
+  orden: number
+  created_at: string
+}
+
+export type ClienteNotificacion = {
+  id: number
+  cliente_id: number
+  icon: string | null
+  texto: string
+  cuando: string | null
+  leida: boolean
+  created_at: string
 }
 
 export type ClienteAprobacion = {
@@ -257,6 +337,8 @@ export type ClienteAprobacion = {
   fecha_aprobacion: string | null
   visto_por_cliente: boolean
   visto_por_agencia: boolean
+  funnel: FunnelStage | null
+  dur: string | null
   created_at: string
   updated_at: string
 }
@@ -270,6 +352,11 @@ export type ClienteObjetivo = {
   fecha_inicio: string
   fecha_logrado: string | null
   resultado: string | null
+  area: string | null
+  meta: string | null
+  actual: string | null
+  por_que: string | null
+  progreso: number | null
   created_at: string
 }
 
@@ -293,6 +380,7 @@ export type ClientePago = {
   estado: 'pendiente' | 'pagado' | 'vencido'
   metodo: string | null
   comprobante_url: string | null
+  factura: string | null
   created_at: string
 }
 
@@ -304,6 +392,11 @@ export type ClienteAcceso = {
   url: string | null
   usuario: string | null
   notas: string | null
+  plataforma: string | null
+  cuenta: string | null
+  estado: string | null
+  color: string | null
+  icon: string | null
   created_at: string
 }
 
@@ -328,6 +421,20 @@ export type ClienteCalendario = {
   descripcion: string | null
   estado: 'programado' | 'publicado' | 'cancelado'
   url: string | null
+  funnel: FunnelStage | null
+  created_at: string
+}
+
+export type ClienteTutorialExt = {
+  id: number
+  agencia_id: string
+  titulo: string
+  descripcion: string | null
+  categoria: string | null
+  url: string
+  orden: number
+  activo: boolean
+  duracion: string | null
   created_at: string
 }
 

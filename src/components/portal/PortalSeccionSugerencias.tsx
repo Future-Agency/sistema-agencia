@@ -6,121 +6,100 @@ type Props = {
   sugerencias: ClienteSugerencia[]
   clienteId: number
   onUpdate: () => void
-  colorPrimario: string
 }
 
-const ESTADO_INFO: Record<string, { label: string; color: string }> = {
-  nueva: { label: 'Nueva', color: '#5e72e4' },
-  en_revision: { label: 'En revision', color: '#f5a623' },
-  implementada: { label: 'Implementada', color: '#00d97e' },
-  descartada: { label: 'Descartada', color: '#6a6a80' },
-}
+const OPTS = [
+  { id: 'idea', label: 'Tengo una idea', icon: 'fa-lightbulb', color: 'var(--warn)' },
+  { id: 'feedback', label: 'Feedback general', icon: 'fa-comment', color: 'var(--brand-blue)' },
+  { id: 'producto', label: 'Producto / oferta nueva', icon: 'fa-rocket', color: 'var(--brand-cyan)' },
+  { id: 'queja', label: 'Algo que no me gustó', icon: 'fa-triangle-exclamation', color: 'var(--bad)' },
+]
 
-export default function PortalSeccionSugerencias({ sugerencias, clienteId, onUpdate, colorPrimario }: Props) {
+export default function PortalSeccionSugerencias({ sugerencias, clienteId, onUpdate }: Props) {
+  const [tipo, setTipo] = useState('idea')
   const [texto, setTexto] = useState('')
+  const [enviado, setEnviado] = useState(false)
   const [enviando, setEnviando] = useState(false)
-  const [success, setSuccess] = useState(false)
 
   async function enviar() {
     if (!texto.trim()) return
     setEnviando(true)
+    const opt = OPTS.find(o => o.id === tipo)
+    const tipoLabel = opt ? opt.label : tipo
     await supabase.from('cliente_sugerencias').insert({
       cliente_id: clienteId,
-      texto: texto.trim(),
+      texto: `[${tipoLabel}] ${texto.trim()}`,
       estado: 'nueva',
       visto_por_agencia: false,
     })
     setTexto('')
     setEnviando(false)
-    setSuccess(true)
-    setTimeout(() => setSuccess(false), 2500)
+    setEnviado(true)
     onUpdate()
   }
 
   return (
     <div>
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginTop: 0, marginBottom: 4 }}>Sugerencias y Mejoras</h2>
-      <p style={{ fontSize: 13, color: '#a0a0b8', marginTop: 0, marginBottom: 24 }}>Que te gustaria que mejoremos? Tu feedback es clave</p>
+      <h1 className="fa-section-h1">Sugerencias & Pedidos</h1>
+      <p className="fa-section-sub">Tu input es oro — el equipo lo lee todos los lunes</p>
 
-      <div style={{ padding: 20, background: '#14142a', border: `1px solid ${colorPrimario}30`, borderRadius: 12, marginBottom: 24 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
-          <i className="fas fa-lightbulb" style={{ color: colorPrimario, marginRight: 8 }} /> Nueva sugerencia
+      {enviado ? (
+        <div className="fa-card" style={{ textAlign: 'center', padding: 60 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 50, background: 'rgba(0,217,126,0.15)', color: 'var(--ok)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <i className="fas fa-check" style={{ fontSize: 28 }} />
+          </div>
+          <div className="fa-display-up" style={{ fontSize: 22, marginBottom: 8 }}>¡Recibido!</div>
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 18 }}>Te respondemos por WhatsApp en menos de 24hs.</div>
+          <button className="fa-btn fa-btn-ghost" onClick={() => { setEnviado(false); setTexto('') }}>Mandar otro</button>
         </div>
-        <textarea
-          value={texto}
-          onChange={e => setTexto(e.target.value)}
-          placeholder="Contanos que mejorarias del servicio, ideas de contenido, lo que sea..."
-          style={{
-            width: '100%', minHeight: 100, padding: 14,
-            background: '#0a0a14', border: '1px solid #2a2a40', borderRadius: 8,
-            color: '#e8e8f0', fontSize: 13, outline: 'none', resize: 'vertical',
-            fontFamily: 'inherit',
-          }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-          {success ? (
-            <span style={{ fontSize: 12, color: '#00d97e' }}>
-              <i className="fas fa-check-circle" style={{ marginRight: 5 }} /> Enviada! Vamos a leerla pronto
-            </span>
-          ) : <span />}
-          <button
-            onClick={enviar}
-            disabled={!texto.trim() || enviando}
-            style={{
-              padding: '10px 18px',
-              background: texto.trim() && !enviando ? `linear-gradient(135deg, ${colorPrimario}, ${colorPrimario}aa)` : '#3a3a55',
-              border: 'none', borderRadius: 8,
-              color: 'white', fontSize: 13, fontWeight: 600,
-              cursor: texto.trim() && !enviando ? 'pointer' : 'not-allowed',
-            }}
-          >
-            <i className="fas fa-paper-plane" style={{ marginRight: 6 }} />
-            {enviando ? 'Enviando...' : 'Enviar sugerencia'}
+      ) : (
+        <div className="fa-card" style={{ marginBottom: 22 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10, fontWeight: 600 }}>¿De qué se trata?</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px,1fr))', gap: 10, marginBottom: 20 }}>
+            {OPTS.map(o => {
+              const a = tipo === o.id
+              return (
+                <button key={o.id} onClick={() => setTipo(o.id)} style={{ padding: 14, background: a ? `color-mix(in srgb, ${o.color} 12%, transparent)` : 'var(--bg-1)', border: `1px solid ${a ? o.color : 'var(--border-2)'}`, borderRadius: 10, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, color: 'var(--text)' }}>
+                  <i className={`fas ${o.icon}`} style={{ color: o.color, fontSize: 18 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{o.label}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8, fontWeight: 600 }}>Contanos</div>
+          <textarea value={texto} onChange={e => setTexto(e.target.value)} placeholder="Lo más detallado posible — qué pensás, ejemplos, links..." style={{ width: '100%', minHeight: 140, padding: 14, background: 'var(--bg-1)', border: '1px solid var(--border-2)', borderRadius: 10, color: 'var(--text)', fontSize: 14, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 14 }} />
+          <button className="fa-btn fa-btn-primary" disabled={!texto.trim() || enviando} onClick={enviar}>
+            {enviando ? <i className="fas fa-spinner fa-spin" /> : <><i className="fas fa-paper-plane" /> Enviar al equipo</>}
           </button>
         </div>
-      </div>
+      )}
 
-      <div>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: '#a0a0b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-          Tus sugerencias anteriores ({sugerencias.length})
-        </h3>
-        {sugerencias.length === 0 ? (
-          <div style={{ padding: 28, background: '#14142a', border: '1px solid #1a1a2e', borderRadius: 12, textAlign: 'center', color: '#6a6a80', fontSize: 13 }}>
-            Aun no enviaste sugerencias
+      {sugerencias.length > 0 && (
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 12 }}>
+            Tus sugerencias anteriores ({sugerencias.length})
           </div>
-        ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             {sugerencias.map(s => {
-              const info = ESTADO_INFO[s.estado] || ESTADO_INFO.nueva
+              const c = s.estado === 'implementada' ? 'var(--ok)' : s.estado === 'descartada' ? 'var(--text-dim)' : s.estado === 'en_revision' ? 'var(--warn)' : 'var(--brand-blue)'
               return (
-                <div key={s.id} style={{ padding: 16, background: '#14142a', border: '1px solid #1a1a2e', borderRadius: 10 }}>
+                <div key={s.id} className="fa-card fa-card-tight">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, color: '#6a6a80' }}>
-                      {new Date(s.created_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </div>
-                    <span style={{
-                      padding: '3px 10px',
-                      background: `${info.color}22`,
-                      color: info.color,
-                      borderRadius: 12,
-                      fontSize: 10,
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                    }}>{info.label}</span>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{new Date(s.created_at).toLocaleDateString('es-AR')}</div>
+                    <span style={{ padding: '3px 10px', background: `color-mix(in srgb, ${c} 18%, transparent)`, color: c, borderRadius: 12, fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>{s.estado.replace('_', ' ')}</span>
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.6 }}>{s.texto}</div>
                   {s.respuesta_agencia && (
-                    <div style={{ marginTop: 10, padding: 10, background: '#0a0a14', borderLeft: `3px solid ${colorPrimario}`, borderRadius: 6 }}>
-                      <div style={{ fontSize: 10, color: colorPrimario, fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>Respuesta del equipo</div>
-                      <div style={{ fontSize: 12, color: '#e8e8f0' }}>{s.respuesta_agencia}</div>
+                    <div style={{ marginTop: 10, padding: 10, background: 'var(--bg-1)', borderLeft: `3px solid ${c}`, borderRadius: 6, fontSize: 12 }}>
+                      <strong style={{ color: c }}>Respuesta del equipo:</strong> {s.respuesta_agencia}
                     </div>
                   )}
                 </div>
               )
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,104 +1,113 @@
 'use client'
+import { useState } from 'react'
 import type { ClienteCalendario } from '@/lib/supabase'
+import { FUNNEL_INFO, FunnelPill, TipoBadge } from './ui'
 
-type Props = { calendario: ClienteCalendario[]; colorPrimario: string }
+type Props = { calendario: ClienteCalendario[] }
 
-const TIPO_ICON: Record<string, { icon: string; color: string }> = {
-  reel: { icon: 'fa-film', color: '#5e72e4' },
-  historia: { icon: 'fa-book-open', color: '#f5a623' },
-  carrousel: { icon: 'fa-layer-group', color: '#8965e0' },
-  anuncio: { icon: 'fa-bullhorn', color: '#f5365c' },
-  guion: { icon: 'fa-scroll', color: '#11cdef' },
-  post: { icon: 'fa-image', color: '#00d97e' },
-}
+export default function PortalSeccionCalendario({ calendario }: Props) {
+  const [vista, setVista] = useState<'mes' | 'lista'>('mes')
 
-export default function PortalSeccionCalendario({ calendario, colorPrimario }: Props) {
-  // Agrupar por mes
-  const grupos = calendario.reduce((acc, item) => {
-    const key = item.fecha.substring(0, 7)
-    if (!acc[key]) acc[key] = []
-    acc[key].push(item)
-    return acc
-  }, {} as Record<string, ClienteCalendario[]>)
+  // Calcular el mes actual basado en items
+  const ahora = new Date()
+  const mesActual = ahora.getMonth()
+  const yearActual = ahora.getFullYear()
+  const ultimoDia = new Date(yearActual, mesActual + 1, 0).getDate()
+  const dias = Array.from({ length: ultimoDia }, (_, i) => i + 1)
 
-  const grupoKeys = Object.keys(grupos).sort()
-  const hoy = new Date().toISOString().substring(0, 10)
+  const eventosPorDia: Record<number, ClienteCalendario[]> = {}
+  calendario.forEach(e => {
+    const f = new Date(e.fecha)
+    if (f.getMonth() === mesActual && f.getFullYear() === yearActual) {
+      const d = f.getDate()
+      eventosPorDia[d] = eventosPorDia[d] || []
+      eventosPorDia[d].push(e)
+    }
+  })
+
+  const hoy = ahora.getDate()
+  const nombreMes = ahora.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+  const sortedLista = [...calendario].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
 
   return (
     <div>
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginTop: 0, marginBottom: 4 }}>Calendario de Contenidos</h2>
-      <p style={{ fontSize: 13, color: '#a0a0b8', marginTop: 0, marginBottom: 24 }}>Programacion de tu contenido en redes sociales</p>
-
-      {calendario.length === 0 ? (
-        <div style={{ padding: 32, background: '#14142a', border: '1px solid #1a1a2e', borderRadius: 12, textAlign: 'center', color: '#6a6a80' }}>
-          <i className="fas fa-calendar-times" style={{ fontSize: 36, marginBottom: 12, color: '#3a3a55' }} />
-          <div>Sin publicaciones programadas todavia</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 className="fa-section-h1">Calendario</h1>
+          <p className="fa-section-sub" style={{ marginBottom: 0 }}>Qué publicamos · qué está en producción · qué viene</p>
         </div>
-      ) : grupoKeys.map(mes => (
-        <div key={mes} style={{ marginBottom: 28 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 600, color: colorPrimario, textTransform: 'capitalize', marginBottom: 12 }}>
-            {new Date(mes + '-01').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
-          </h3>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {grupos[mes].map(item => {
-              const t = TIPO_ICON[item.tipo || ''] || { icon: 'fa-calendar', color: colorPrimario }
-              const yaPaso = item.fecha < hoy
-              const esHoy = item.fecha === hoy
-              const publicado = item.estado === 'publicado'
+        <div style={{ display: 'flex', gap: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 4 }}>
+          {(['mes', 'lista'] as const).map(v => (
+            <button key={v} onClick={() => setVista(v)} style={{ padding: '7px 14px', background: vista === v ? 'var(--brand-blue)' : 'transparent', border: 'none', borderRadius: 7, color: vista === v ? '#fff' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{v === 'mes' ? 'Mes' : 'Lista'}</button>
+          ))}
+        </div>
+      </div>
+
+      {vista === 'mes' ? (
+        <div className="fa-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+            <div className="fa-display-up" style={{ fontSize: 18, textTransform: 'capitalize' }}>{nombreMes}</div>
+            <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+              {Object.entries(FUNNEL_INFO).map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 10, height: 10, background: v.color, borderRadius: 50 }} />{v.short}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 6 }}>
+            {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
+              <div key={d} style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', padding: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{d}</div>
+            ))}
+            {dias.map(d => {
+              const evs = eventosPorDia[d] || []
               return (
-                <div key={item.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  padding: 14,
-                  background: esHoy ? `${colorPrimario}15` : '#14142a',
-                  border: `1px solid ${esHoy ? colorPrimario + '55' : '#1a1a2e'}`,
-                  borderRadius: 12,
-                  opacity: yaPaso && !publicado ? 0.5 : 1,
-                }}>
-                  <div style={{
-                    width: 52, height: 52,
-                    background: '#0a0a14',
-                    borderRadius: 10,
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                    border: `1px solid ${esHoy ? colorPrimario : '#1a1a2e'}`,
-                  }}>
-                    <div style={{ fontSize: 9, color: '#6a6a80', textTransform: 'uppercase' }}>
-                      {new Date(item.fecha).toLocaleDateString('es-AR', { month: 'short' })}
-                    </div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: esHoy ? colorPrimario : '#e8e8f0' }}>
-                      {new Date(item.fecha).getDate()}
-                    </div>
-                  </div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <i className={`fas ${t.icon}`} style={{ color: t.color, fontSize: 12 }} />
-                      <span style={{ fontSize: 10, color: t.color, textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5 }}>{item.tipo}</span>
-                      {esHoy && <span style={{ fontSize: 10, color: colorPrimario, fontWeight: 700 }}>HOY</span>}
-                    </div>
-                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{item.titulo}</div>
-                    {item.descripcion && <div style={{ fontSize: 12, color: '#a0a0b8' }}>{item.descripcion}</div>}
-                  </div>
-
-                  <div style={{
-                    padding: '4px 10px',
-                    background: publicado ? '#00d97e22' : item.estado === 'cancelado' ? '#f5365c22' : `${colorPrimario}22`,
-                    color: publicado ? '#00d97e' : item.estado === 'cancelado' ? '#f5365c' : colorPrimario,
-                    borderRadius: 12,
-                    fontSize: 10,
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    flexShrink: 0,
-                  }}>
-                    {item.estado}
-                  </div>
+                <div key={d} style={{ aspectRatio: '1', background: 'var(--bg-1)', borderRadius: 8, padding: 6, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: d === hoy ? '1px solid var(--brand-blue)' : '1px solid transparent' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3, fontWeight: 600 }}>{d}</div>
+                  {evs.slice(0, 2).map((e, i) => {
+                    const c = e.funnel ? FUNNEL_INFO[e.funnel].color : 'var(--text-dim)'
+                    return (
+                      <div key={i} style={{ padding: '2px 4px', background: `${c}33`, borderLeft: `2px solid ${c}`, borderRadius: 3, fontSize: 9, marginBottom: 2, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {e.titulo}
+                      </div>
+                    )
+                  })}
+                  {evs.length > 2 && <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>+{evs.length - 2}</div>}
                 </div>
               )
             })}
           </div>
         </div>
-      ))}
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {sortedLista.map(e => {
+            const c = e.funnel ? FUNNEL_INFO[e.funnel].color : 'var(--text-dim)'
+            return (
+              <div key={e.id} className="fa-card fa-card-tight" style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ width: 60, textAlign: 'center', flexShrink: 0 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{new Date(e.fecha).toLocaleDateString('es-AR', { month: 'short' })}</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{new Date(e.fecha).getDate()}</div>
+                </div>
+                <div style={{ width: 3, alignSelf: 'stretch', background: c, borderRadius: 2 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                    {e.tipo && <TipoBadge tipo={e.tipo} />}
+                    <FunnelPill stage={e.funnel} />
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>· {e.estado}</span>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{e.titulo}</div>
+                </div>
+              </div>
+            )
+          })}
+          {sortedLista.length === 0 && (
+            <div className="fa-card" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>
+              <i className="fas fa-calendar-times" style={{ fontSize: 28, color: 'var(--text-dim)', marginBottom: 10 }} />
+              <div>Sin publicaciones en el calendario</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

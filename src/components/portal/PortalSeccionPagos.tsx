@@ -1,129 +1,74 @@
 'use client'
-import type { ClientePago, ClientePortalConfig } from '@/lib/supabase'
+import type { ClientePago } from '@/lib/supabase'
+import { fmtMoney } from './ui'
 
-type Props = { pagos: ClientePago[]; config: ClientePortalConfig | null; colorPrimario: string }
+type Props = { pagos: ClientePago[] }
 
-const ESTADO_INFO: Record<string, { label: string; color: string; icon: string }> = {
-  pagado: { label: 'Pagado', color: '#00d97e', icon: 'fa-check-circle' },
-  pendiente: { label: 'Pendiente', color: '#f5a623', icon: 'fa-clock' },
-  vencido: { label: 'Vencido', color: '#f5365c', icon: 'fa-exclamation-circle' },
-}
-
-export default function PortalSeccionPagos({ pagos, config, colorPrimario }: Props) {
-  const proximoPago = pagos.find(p => p.estado === 'pendiente')
-  const totalPagado = pagos.filter(p => p.estado === 'pagado').reduce((s, p) => s + p.monto, 0)
-  const cantidadPagos = pagos.filter(p => p.estado === 'pagado').length
+export default function PortalSeccionPagos({ pagos }: Props) {
+  const pendientes = pagos.filter(p => p.estado === 'pendiente').sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+  const proximo = pendientes[0]
+  const historial = pagos.filter(p => p.estado !== 'pendiente').sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
 
   return (
     <div>
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginTop: 0, marginBottom: 4 }}>Pagos</h2>
-      <p style={{ fontSize: 13, color: '#a0a0b8', marginTop: 0, marginBottom: 24 }}>Tu historial de pagos y proximos vencimientos</p>
+      <h1 className="fa-section-h1">Pagos & Facturación</h1>
+      <p className="fa-section-sub">Lo que cobramos · cuándo · qué incluye</p>
 
-      {/* Resumen */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
-        {config?.fecha_inicio_servicio && (
-          <Card icon="fa-flag" label="Inicio del servicio" value={fmt(config.fecha_inicio_servicio)} color={colorPrimario} />
-        )}
-        {config?.monto_mensual && (
-          <Card icon="fa-money-bill" label="Mensualidad" value={`${config.moneda} ${formatNum(config.monto_mensual)}`} color={colorPrimario} />
-        )}
-        <Card icon="fa-receipt" label="Pagos realizados" value={cantidadPagos} color="#00d97e" />
-        {totalPagado > 0 && (
-          <Card icon="fa-coins" label="Total acumulado" value={`$${formatNum(totalPagado)}`} color="#00d97e" />
-        )}
-      </div>
-
-      {/* Proximo pago */}
-      {proximoPago && (
-        <div style={{
-          padding: 22,
-          background: `linear-gradient(135deg, ${colorPrimario}25, ${colorPrimario}10)`,
-          border: `1px solid ${colorPrimario}55`,
-          borderRadius: 14,
-          marginBottom: 24,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+      {proximo && (
+        <div className="fa-card" style={{ marginBottom: 22, background: 'var(--brand-grad)', color: '#fff', border: 'none' }}>
+          <div style={{ fontSize: 11, opacity: 0.9, textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 8, fontWeight: 600 }}>Próximo cobro</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 18, flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontSize: 11, color: colorPrimario, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>
-                <i className="fas fa-calendar-day" style={{ marginRight: 6 }} /> Proximo pago
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 2 }}>
-                {proximoPago.moneda} ${formatNum(proximoPago.monto)}
-              </div>
-              <div style={{ fontSize: 13, color: '#a0a0b8' }}>{proximoPago.concepto || 'Servicio mensual'}</div>
+              <div style={{ fontSize: 36, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{fmtMoney(proximo.monto, proximo.moneda)}</div>
+              <div style={{ fontSize: 13, opacity: 0.95, marginTop: 4 }}>{proximo.concepto}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 11, color: '#6a6a80', textTransform: 'uppercase' }}>Vence</div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>{fmt(proximoPago.fecha)}</div>
+              <div style={{ fontSize: 11, opacity: 0.85 }}>Vence el</div>
+              <div style={{ fontSize: 18, fontWeight: 600 }}>{new Date(proximo.fecha).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Historial */}
-      <h3 style={{ fontSize: 13, fontWeight: 600, color: '#a0a0b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
-        Historial completo
-      </h3>
-      {pagos.length === 0 ? (
-        <div style={{ padding: 28, background: '#14142a', border: '1px solid #1a1a2e', borderRadius: 12, textAlign: 'center', color: '#6a6a80' }}>
-          Sin movimientos aun
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gap: 8 }}>
-          {pagos.map(p => {
-            const info = ESTADO_INFO[p.estado] || ESTADO_INFO.pendiente
-            return (
-              <div key={p.id} style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: 14,
-                background: '#14142a',
-                border: '1px solid #1a1a2e',
-                borderRadius: 10,
-              }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: 10,
-                  background: `${info.color}22`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: info.color, fontSize: 14,
-                  flexShrink: 0,
-                }}>
-                  <i className={`fas ${info.icon}`} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{p.concepto || 'Pago de servicio'}</div>
-                  <div style={{ fontSize: 11, color: '#6a6a80' }}>
-                    {fmt(p.fecha)}
-                    {p.metodo && ` · ${p.metodo}`}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{p.moneda} ${formatNum(p.monto)}</div>
-                  <div style={{ fontSize: 10, color: info.color, fontWeight: 600, textTransform: 'uppercase' }}>{info.label}</div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Card({ icon, label, value, color }: { icon: string; label: string; value: any; color: string }) {
-  return (
-    <div style={{ padding: 14, background: '#14142a', border: '1px solid #1a1a2e', borderRadius: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 11, color: '#6a6a80', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        <i className={`fas ${icon}`} style={{ color }} /> {label}
+      <div className="fa-card">
+        <div className="fa-display-up" style={{ fontSize: 18, marginBottom: 14 }}>Historial</div>
+        {historial.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 28 }}>Sin movimientos aún</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ textAlign: 'left', padding: '10px 8px 10px 0', fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>Fecha</th>
+                  <th style={{ textAlign: 'left', padding: '10px 8px', fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>Concepto</th>
+                  <th style={{ textAlign: 'right', padding: '10px 8px', fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>Monto</th>
+                  <th style={{ textAlign: 'right', padding: '10px 8px', fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>Estado</th>
+                  <th style={{ textAlign: 'right', padding: '10px 0 10px 8px', fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>Factura</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historial.map(p => (
+                  <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '12px 8px 12px 0', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>{new Date(p.fecha).toLocaleDateString('es-AR')}</td>
+                    <td style={{ padding: '12px 8px' }}>{p.concepto}</td>
+                    <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(p.monto, p.moneda)}</td>
+                    <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                      <span style={{ padding: '3px 9px', background: p.estado === 'pagado' ? 'rgba(0,217,126,0.15)' : 'rgba(245,166,35,0.15)', color: p.estado === 'pagado' ? 'var(--ok)' : 'var(--warn)', borderRadius: 10, fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>{p.estado}</span>
+                    </td>
+                    <td style={{ padding: '12px 0 12px 8px', textAlign: 'right' }}>
+                      {p.factura ? (
+                        <a href="#" style={{ color: 'var(--brand-blue-soft)', fontSize: 12, textDecoration: 'none' }}><i className="fas fa-download" /> {p.factura}</a>
+                      ) : (
+                        <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-      <div style={{ fontSize: 18, fontWeight: 700 }}>{value}</div>
     </div>
   )
-}
-
-function fmt(d: string) {
-  return new Date(d).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function formatNum(n: number): string {
-  return new Intl.NumberFormat('es-AR').format(Math.round(n))
 }
