@@ -1,5 +1,6 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
+import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import { supabase } from '@/lib/supabase'
 import type { Cliente, Owner, AdAccount, PeriodMetrics, TipoCuenta, KanbanEstado, KanbanSub } from '@/lib/supabase'
 import GestionAnuncio, { TIPO_CUENTA_OPTS, KANBAN_OPTS } from './GestionAnuncio'
@@ -591,9 +592,13 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
                   {adAccounts.filter(a => a.account_status !== 1).map(a => {
                     const st = STATUS_LABELS[a.account_status] || STATUS_LABELS[1]
                     return (
-                      <span key={a.id} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: st.bg, color: st.color, fontWeight: 600 }}>
-                        {a.account_name} — {st.label}
-                      </span>
+                      <button key={a.id} onClick={() => setSelectedAccount(a)}
+                        style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: st.bg, color: st.color, fontWeight: 600, border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                        onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.4)')}
+                        onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
+                        title={`Abrir ${a.account_name}`}>
+                        {a.account_name} — {st.label} <i className="fas fa-arrow-right" style={{ fontSize: 9 }} />
+                      </button>
                     )
                   })}
                 </div>
@@ -609,9 +614,13 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {rows.filter(r => r.spend === 0 && r.acc.account_status === 1).map(r => (
-                    <span key={r.acc.id} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'rgba(245,166,35,.1)', color: '#f5a623', fontWeight: 600 }}>
-                      {r.acc.account_name}
-                    </span>
+                    <button key={r.acc.id} onClick={() => setSelectedAccount(r.acc)}
+                      style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'rgba(245,166,35,.1)', color: '#f5a623', fontWeight: 600, border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                      onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.4)')}
+                      onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
+                      title={`Abrir ${r.acc.account_name}`}>
+                      {r.acc.account_name} <i className="fas fa-arrow-right" style={{ fontSize: 9 }} />
+                    </button>
                   ))}
                 </div>
               </div>
@@ -623,20 +632,35 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
   )
 }
 
-// ===================== KANBAN VIEW =====================
+// ===================== KANBAN VIEW (drag & drop) =====================
+const ONBOARDING_SUBS: { id: KanbanSub; label: string; icon: string }[] = [
+  { id: 'config', label: 'Configuración (CP/CRM/E-comm)', icon: 'fa-gears' },
+  { id: 'estrategia', label: 'Estrategia', icon: 'fa-chess' },
+  { id: 'listos', label: 'Listos para publicar', icon: 'fa-paper-plane' },
+]
+
 function KanbanView({ rows, clientes, owners, onSelect, onUpdate }: { rows: Row[]; clientes: Cliente[]; owners: Owner[]; onSelect: (a: AdAccount) => void; onUpdate: () => void }) {
-  // Cuentas sin estado kanban van a 'corriendo' como default
-  function getEstado(r: Row): KanbanEstado {
-    return (r.acc.kanban_estado as KanbanEstado) || 'corriendo'
+  function getEstado(r: Row): KanbanEstado { return (r.acc.kanban_estado as KanbanEstado) || 'corriendo' }
+  function diasEnEstado(r: Row): number {
+    const ts = r.acc.kanban_changed_at
+    if (!ts) return 0
+    return Math.floor((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24))
   }
 
-  const SUBS: { id: KanbanSub; label: string; icon: string }[] = [
-    { id: 'config', label: 'Configuración (CP/CRM/E-comm)', icon: 'fa-gears' },
-    { id: 'estrategia', label: 'Estrategia', icon: 'fa-chess' },
-    { id: 'listos', label: 'Listos para publicar', icon: 'fa-paper-plane' },
-  ]
+  // optimistic state local — para que el dnd se vea fluido sin esperar al server
+  const [localOverride, setLocalOverride] = useState<Record<number, { estado: KanbanEstado; sub: KanbanSub | null }>>({})
 
-  async function moverA(accId: number, estado: KanbanEstado, sub: KanbanSub | null = null) {
+  function effectiveEstado(r: Row): KanbanEstado {
+    const ov = localOverride[r.acc.id]
+    return ov ? ov.estado : getEstado(r)
+  }
+  function effectiveSub(r: Row): KanbanSub | null {
+    const ov = localOverride[r.acc.id]
+    if (ov) return ov.sub
+    return (r.acc.kanban_sub as KanbanSub) || null
+  }
+
+  async function persist(accId: number, estado: KanbanEstado, sub: KanbanSub | null) {
     await supabase.from('ad_accounts').update({
       kanban_estado: estado,
       kanban_sub: estado === 'onboarding' ? (sub || 'config') : null,
@@ -645,184 +669,219 @@ function KanbanView({ rows, clientes, owners, onSelect, onUpdate }: { rows: Row[
     onUpdate()
   }
 
-  function diasEnEstado(r: Row): number {
-    const ts = r.acc.kanban_changed_at
-    if (!ts) return 0
-    return Math.floor((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24))
+  function parseDropId(id: string): { estado: KanbanEstado; sub: KanbanSub | null } {
+    const [estado, sub] = id.split(':') as [KanbanEstado, KanbanSub | undefined]
+    return { estado, sub: sub || null }
+  }
+
+  async function onDragEnd(result: DropResult) {
+    if (!result.destination) return
+    const accId = parseInt(result.draggableId, 10)
+    const { estado, sub } = parseDropId(result.destination.droppableId)
+    setLocalOverride(o => ({ ...o, [accId]: { estado, sub } }))
+    await persist(accId, estado, sub)
+  }
+
+  function onMoveClick(accId: number, estado: KanbanEstado, sub: KanbanSub | null = null) {
+    setLocalOverride(o => ({ ...o, [accId]: { estado, sub } }))
+    persist(accId, estado, sub)
   }
 
   return (
-    <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
-      {KANBAN_OPTS.map(col => {
-        const items = rows.filter(r => getEstado(r) === col.id)
-        return (
-          <div key={col.id} style={{
-            minWidth: 280, maxWidth: 320, flex: '1 0 280px',
-            background: '#0e0e18',
-            border: `1px solid ${col.color}33`,
-            borderTop: `3px solid ${col.color}`,
-            borderRadius: 10, padding: 12,
-            display: 'flex', flexDirection: 'column', gap: 10,
-            maxHeight: 'calc(100vh - 380px)', overflowY: 'auto',
-          }}>
-            {/* Header de columna */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <i className={`fas ${col.icon}`} style={{ color: col.color, fontSize: 14 }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: col.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{col.label}</span>
+    <DragDropContext onDragEnd={onDragEnd}>
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
+        {KANBAN_OPTS.map(col => {
+          const items = rows.filter(r => effectiveEstado(r) === col.id)
+          return (
+            <div key={col.id} style={{
+              minWidth: 280, maxWidth: 320, flex: '1 0 280px',
+              background: '#0e0e18',
+              border: `1px solid ${col.color}33`,
+              borderTop: `3px solid ${col.color}`,
+              borderRadius: 10, padding: 12,
+              display: 'flex', flexDirection: 'column', gap: 10,
+              maxHeight: 'calc(100vh - 380px)', overflowY: 'auto',
+            }}>
+              {/* Header columna */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <i className={`fas ${col.icon}`} style={{ color: col.color, fontSize: 14 }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: col.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{col.label}</span>
+                </div>
+                <span style={{ padding: '2px 8px', borderRadius: 999, background: `${col.color}22`, color: col.color, fontSize: 11, fontWeight: 700 }}>{items.length}</span>
               </div>
-              <span style={{ padding: '2px 8px', borderRadius: 999, background: `${col.color}22`, color: col.color, fontSize: 11, fontWeight: 700 }}>{items.length}</span>
-            </div>
-            <div style={{ fontSize: 10, color: '#6a6a80', lineHeight: 1.4 }}>{col.desc}</div>
+              <div style={{ fontSize: 10, color: '#6a6a80', lineHeight: 1.4 }}>{col.desc}</div>
 
-            {/* Sub-fases (solo onboarding) */}
-            {col.id === 'onboarding' ? (
-              <>
-                {SUBS.map(sub => {
-                  const subs = items.filter(r => (r.acc.kanban_sub || 'config') === sub.id)
-                  return (
-                    <div key={sub.id} style={{ marginTop: 4 }}>
-                      <div style={{ fontSize: 10, color: '#a0a0b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '6px 4px 4px', display: 'flex', justifyContent: 'space-between' }}>
-                        <span><i className={`fas ${sub.icon}`} style={{ marginRight: 5, color: col.color }} />{sub.label}</span>
-                        <span style={{ color: '#6a6a80' }}>{subs.length}</span>
+              {col.id === 'onboarding' ? (
+                <>
+                  {ONBOARDING_SUBS.map(sub => {
+                    const subs = items.filter(r => (effectiveSub(r) || 'config') === sub.id)
+                    return (
+                      <div key={sub.id} style={{ marginTop: 4 }}>
+                        <div style={{ fontSize: 10, color: '#a0a0b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '6px 4px 4px', display: 'flex', justifyContent: 'space-between' }}>
+                          <span><i className={`fas ${sub.icon}`} style={{ marginRight: 5, color: col.color }} />{sub.label}</span>
+                          <span style={{ color: '#6a6a80' }}>{subs.length}</span>
+                        </div>
+                        <Droppable droppableId={`onboarding:${sub.id}`}>
+                          {(provided, snapshot) => (
+                            <div ref={provided.innerRef} {...provided.droppableProps}
+                              style={{ minHeight: 30, background: snapshot.isDraggingOver ? `${col.color}10` : 'transparent', borderRadius: 6, padding: 4, transition: 'background .15s' }}>
+                              {subs.map((r, idx) => (
+                                <DraggableKanbanCard key={r.acc.id} index={idx} row={r} clientes={clientes} owners={owners} colColor={col.color} dias={diasEnEstado(r)} estado={col.id} onClick={() => onSelect(r.acc)} onMove={onMoveClick} />
+                              ))}
+                              {provided.placeholder}
+                              {subs.length === 0 && !snapshot.isDraggingOver && (
+                                <div style={{ fontSize: 10, color: '#3a3a55', fontStyle: 'italic', padding: '4px 8px' }}>—</div>
+                              )}
+                            </div>
+                          )}
+                        </Droppable>
                       </div>
-                      {subs.map(r => <KanbanCard key={r.acc.id} row={r} clientes={clientes} owners={owners} colColor={col.color} dias={diasEnEstado(r)} estado={col.id} onClick={() => onSelect(r.acc)} onMove={moverA} />)}
-                      {subs.length === 0 && (
-                        <div style={{ fontSize: 10, color: '#3a3a55', fontStyle: 'italic', padding: '4px 8px' }}>—</div>
+                    )
+                  })}
+                </>
+              ) : (
+                <Droppable droppableId={col.id}>
+                  {(provided, snapshot) => (
+                    <div ref={provided.innerRef} {...provided.droppableProps}
+                      style={{ minHeight: 60, background: snapshot.isDraggingOver ? `${col.color}10` : 'transparent', borderRadius: 6, padding: 4, transition: 'background .15s' }}>
+                      {items.map((r, idx) => (
+                        <DraggableKanbanCard key={r.acc.id} index={idx} row={r} clientes={clientes} owners={owners} colColor={col.color} dias={diasEnEstado(r)} estado={col.id} onClick={() => onSelect(r.acc)} onMove={onMoveClick} />
+                      ))}
+                      {provided.placeholder}
+                      {items.length === 0 && !snapshot.isDraggingOver && (
+                        <div style={{ fontSize: 11, color: '#4a4a60', fontStyle: 'italic', padding: 12, textAlign: 'center' }}>Soltá una cuenta acá</div>
                       )}
                     </div>
-                  )
-                })}
-              </>
-            ) : (
-              <>
-                {items.map(r => <KanbanCard key={r.acc.id} row={r} clientes={clientes} owners={owners} colColor={col.color} dias={diasEnEstado(r)} estado={col.id} onClick={() => onSelect(r.acc)} onMove={moverA} />)}
-                {items.length === 0 && (
-                  <div style={{ fontSize: 11, color: '#4a4a60', fontStyle: 'italic', padding: 12, textAlign: 'center' }}>Sin cuentas en este estado</div>
-                )}
-              </>
-            )}
-          </div>
-        )
-      })}
-    </div>
+                  )}
+                </Droppable>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </DragDropContext>
   )
 }
 
-function KanbanCard({ row, clientes, owners, colColor, dias, estado, onClick, onMove }: {
-  row: Row; clientes: Cliente[]; owners: Owner[]; colColor: string; dias: number; estado: KanbanEstado;
-  onClick: () => void; onMove: (id: number, e: KanbanEstado, s?: KanbanSub | null) => Promise<void>
+function DraggableKanbanCard({ row, index, clientes, owners, colColor, dias, estado, onClick, onMove }: {
+  row: Row; index: number; clientes: Cliente[]; owners: Owner[]; colColor: string; dias: number; estado: KanbanEstado;
+  onClick: () => void; onMove: (id: number, e: KanbanEstado, s?: KanbanSub | null) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const cliente = clientes.find(c => c.id === row.acc.cliente_id)
   const owner = cliente ? owners.find(o => o.id === cliente.owner_id) : null
   const tipos = (row.acc.tipos_cuenta || []) as TipoCuenta[]
-  // Alerta si está mucho tiempo en CORRIENDO sin moverse
   const alertaTiempo = estado === 'corriendo' && dias >= 14
   const tienePagoOK = !!row.acc.revision_mensual_at && !!row.acc.reporte_at
+
   return (
-    <div style={{
-      background: '#14142a',
-      border: `1px solid ${alertaTiempo ? '#f5a62355' : '#1f1f2e'}`,
-      borderRadius: 8, padding: 10,
-      cursor: 'pointer',
-      position: 'relative',
-      transition: 'all .15s',
-    }}
-      onMouseEnter={e => (e.currentTarget.style.borderColor = colColor + '55')}
-      onMouseLeave={e => (e.currentTarget.style.borderColor = alertaTiempo ? '#f5a62355' : '#1f1f2e')}
-    >
-      {/* Header card */}
-      <div onClick={onClick} style={{ marginBottom: 6 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#e8e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {row.acc.account_name}
-        </div>
-        {cliente && (
-          <div style={{ fontSize: 10, color: owner?.color || '#6a6a80', marginTop: 2 }}>
-            {cliente.nombre}{owner ? ` · ${owner.nombre_corto}` : ''}
-          </div>
-        )}
-      </div>
-
-      {/* Tipos */}
-      {tipos.length > 0 && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
-          {tipos.map(t => {
-            const opt = TIPO_CUENTA_OPTS.find(x => x.id === t)
-            if (!opt) return null
-            return (
-              <span key={t} style={{ fontSize: 9, padding: '1px 6px', background: `${opt.color}22`, color: opt.color, borderRadius: 4, fontWeight: 600 }}>
-                <i className={`fas ${opt.icon}`} style={{ fontSize: 8, marginRight: 3 }} />{opt.label}
-              </span>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Métricas mini */}
-      <div onClick={onClick} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#8a8aa0', marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>
-        <span><span style={{ color: '#6a6a80' }}>spend</span> {row.spend > 0 ? `$${formatCompact(row.spend)}` : '—'}</span>
-        <span><span style={{ color: '#6a6a80' }}>roas</span> {row.roas > 0 ? `${row.roas.toFixed(1)}x` : '—'}</span>
-      </div>
-
-      {/* Footer */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 9 }}>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {alertaTiempo && (
-            <span title="Mucho tiempo sin moverse" style={{ color: '#f5a623', fontWeight: 600 }}>
-              <i className="fas fa-clock" /> {dias}d
-            </span>
-          )}
-          {tienePagoOK && (
-            <span title="Revisión + reporte hechos" style={{ color: '#00d97e' }}>
-              <i className="fas fa-circle-check" />
-            </span>
-          )}
-        </div>
-        <button
-          onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-          style={{ background: 'transparent', border: 'none', color: '#6a6a80', cursor: 'pointer', fontSize: 11, padding: 4 }}
-          title="Mover"
+    <Draggable draggableId={String(row.acc.id)} index={index}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          style={{
+            ...provided.draggableProps.style,
+            background: snapshot.isDragging ? '#1a1a2e' : '#14142a',
+            border: `1px solid ${snapshot.isDragging ? colColor + 'aa' : alertaTiempo ? '#f5a62355' : '#1f1f2e'}`,
+            borderRadius: 8, padding: 10,
+            position: 'relative',
+            marginBottom: 8,
+            transition: snapshot.isDragging ? undefined : 'border-color .15s',
+            boxShadow: snapshot.isDragging ? '0 12px 24px rgba(0,0,0,.5)' : 'none',
+          }}
         >
-          <i className="fas fa-arrows-up-down-left-right" />
-        </button>
-      </div>
+          {/* Header card — clickeable solo cuando no drag */}
+          <div onClick={() => !snapshot.isDragging && onClick()} style={{ marginBottom: 6, cursor: 'pointer' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#e8e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {row.acc.account_name}
+            </div>
+            {cliente && (
+              <div style={{ fontSize: 10, color: owner?.color || '#6a6a80', marginTop: 2 }}>
+                {cliente.nombre}{owner ? ` · ${owner.nombre_corto}` : ''}
+              </div>
+            )}
+          </div>
 
-      {/* Menu mover */}
-      {menuOpen && (
-        <div onClick={e => e.stopPropagation()} style={{
-          position: 'absolute', right: 4, bottom: 32, zIndex: 10,
-          background: '#0a0a14', border: '1px solid #2a2a40', borderRadius: 8, padding: 4,
-          boxShadow: '0 8px 24px rgba(0,0,0,.4)',
-          minWidth: 200,
-        }}>
-          <div style={{ fontSize: 9, color: '#6a6a80', textTransform: 'uppercase', padding: '6px 8px', fontWeight: 700, letterSpacing: 0.5 }}>Mover a:</div>
-          {KANBAN_OPTS.filter(o => o.id !== estado && o.id !== 'onboarding').map(o => (
-            <button key={o.id} onClick={async () => { await onMove(row.acc.id, o.id); setMenuOpen(false) }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', background: 'transparent', border: 'none', color: '#e8e8f0', fontSize: 11, cursor: 'pointer', borderRadius: 4, textAlign: 'left' }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#1a1a28')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              <i className={`fas ${o.icon}`} style={{ color: o.color, width: 14 }} />{o.label}
-            </button>
-          ))}
-          <div style={{ fontSize: 9, color: '#6a6a80', textTransform: 'uppercase', padding: '8px 8px 4px', fontWeight: 700, letterSpacing: 0.5, borderTop: '1px solid #1a1a28', marginTop: 4 }}>Onboarding:</div>
-          {[
-            { id: 'config' as KanbanSub, label: 'Configuración', icon: 'fa-gears' },
-            { id: 'estrategia' as KanbanSub, label: 'Estrategia', icon: 'fa-chess' },
-            { id: 'listos' as KanbanSub, label: 'Listos publicar', icon: 'fa-paper-plane' },
-          ].map(s => (
-            <button key={s.id} onClick={async () => { await onMove(row.acc.id, 'onboarding', s.id); setMenuOpen(false) }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', background: 'transparent', border: 'none', color: '#e8e8f0', fontSize: 11, cursor: 'pointer', borderRadius: 4, textAlign: 'left' }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#1a1a28')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              <i className={`fas ${s.icon}`} style={{ color: '#8965e0', width: 14 }} />{s.label}
-            </button>
-          ))}
+          {tipos.length > 0 && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+              {tipos.map(t => {
+                const opt = TIPO_CUENTA_OPTS.find(x => x.id === t)
+                if (!opt) return null
+                return (
+                  <span key={t} style={{ fontSize: 9, padding: '1px 6px', background: `${opt.color}22`, color: opt.color, borderRadius: 4, fontWeight: 600 }}>
+                    <i className={`fas ${opt.icon}`} style={{ fontSize: 8, marginRight: 3 }} />{opt.label}
+                  </span>
+                )
+              })}
+            </div>
+          )}
+
+          <div onClick={() => !snapshot.isDragging && onClick()} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#8a8aa0', marginBottom: 6, fontVariantNumeric: 'tabular-nums', cursor: 'pointer' }}>
+            <span><span style={{ color: '#6a6a80' }}>spend</span> {row.spend > 0 ? `$${formatCompact(row.spend)}` : '—'}</span>
+            <span><span style={{ color: '#6a6a80' }}>roas</span> {row.roas > 0 ? `${row.roas.toFixed(1)}x` : '—'}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 9 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              {alertaTiempo && (
+                <span title="Mucho tiempo sin moverse" style={{ color: '#f5a623', fontWeight: 600 }}>
+                  <i className="fas fa-clock" /> {dias}d
+                </span>
+              )}
+              {tienePagoOK && (
+                <span title="Revisión + reporte hechos" style={{ color: '#00d97e' }}>
+                  <i className="fas fa-circle-check" />
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ color: '#3a3a55', fontSize: 10 }} title="Arrastrá para mover"><i className="fas fa-grip-vertical" /></span>
+              <button
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
+                style={{ background: 'transparent', border: 'none', color: '#6a6a80', cursor: 'pointer', fontSize: 11, padding: 4 }}
+                title="Menu mover"
+              >
+                <i className="fas fa-ellipsis-v" />
+              </button>
+            </div>
+          </div>
+
+          {menuOpen && (
+            <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} style={{
+              position: 'absolute', right: 4, bottom: 32, zIndex: 10,
+              background: '#0a0a14', border: '1px solid #2a2a40', borderRadius: 8, padding: 4,
+              boxShadow: '0 8px 24px rgba(0,0,0,.4)',
+              minWidth: 200,
+            }}>
+              <div style={{ fontSize: 9, color: '#6a6a80', textTransform: 'uppercase', padding: '6px 8px', fontWeight: 700, letterSpacing: 0.5 }}>Mover a:</div>
+              {KANBAN_OPTS.filter(o => o.id !== estado && o.id !== 'onboarding').map(o => (
+                <button key={o.id} onClick={() => { onMove(row.acc.id, o.id); setMenuOpen(false) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', background: 'transparent', border: 'none', color: '#e8e8f0', fontSize: 11, cursor: 'pointer', borderRadius: 4, textAlign: 'left' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#1a1a28')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <i className={`fas ${o.icon}`} style={{ color: o.color, width: 14 }} />{o.label}
+                </button>
+              ))}
+              <div style={{ fontSize: 9, color: '#6a6a80', textTransform: 'uppercase', padding: '8px 8px 4px', fontWeight: 700, letterSpacing: 0.5, borderTop: '1px solid #1a1a28', marginTop: 4 }}>Onboarding:</div>
+              {ONBOARDING_SUBS.map(s => (
+                <button key={s.id} onClick={() => { onMove(row.acc.id, 'onboarding', s.id); setMenuOpen(false) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', background: 'transparent', border: 'none', color: '#e8e8f0', fontSize: 11, cursor: 'pointer', borderRadius: 4, textAlign: 'left' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#1a1a28')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <i className={`fas ${s.icon}`} style={{ color: '#8965e0', width: 14 }} />{s.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
-    </div>
+    </Draggable>
   )
 }
 

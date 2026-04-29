@@ -14,6 +14,7 @@ export const KANBAN_OPTS: { id: KanbanEstado; label: string; color: string; icon
   { id: 'optimizar', label: 'Ads a Optimizar', color: '#f5a623', icon: 'fa-screwdriver-wrench', desc: 'Resultados negativos, hay que mover' },
   { id: 'escalar', label: 'Ads a Escalar', color: '#11cdef', icon: 'fa-chart-line', desc: 'Invertir más para maximizar' },
   { id: 'onboarding', label: 'Onboarding', color: '#8965e0', icon: 'fa-rocket-launch', desc: 'Configuración, estrategia, listos' },
+  { id: 'reestructuracion', label: 'Re-estructuración', color: '#9333ea', icon: 'fa-arrows-rotate', desc: 'Optin grave, nueva estrategia de base' },
 ]
 
 type Props = {

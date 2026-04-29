@@ -173,7 +173,7 @@ export type AdAccount = {
 }
 
 export type TipoCuenta = 'ecommerce' | 'formularios' | 'mensajeria'
-export type KanbanEstado = 'problemas' | 'corriendo' | 'optimizar' | 'escalar' | 'onboarding'
+export type KanbanEstado = 'problemas' | 'corriendo' | 'optimizar' | 'escalar' | 'onboarding' | 'reestructuracion'
 export type KanbanSub = 'config' | 'estrategia' | 'listos'
 
 export type AdAccountConfig = {
