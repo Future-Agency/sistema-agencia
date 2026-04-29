@@ -164,7 +164,17 @@ export type AdAccount = {
   metrics_30d_prev: PeriodMetrics | null
   agencia_id?: string
   funnel?: FunnelStage | null
+  tipos_cuenta?: TipoCuenta[] | null
+  kanban_estado?: KanbanEstado | null
+  kanban_sub?: KanbanSub | null
+  kanban_changed_at?: string | null
+  revision_mensual_at?: string | null
+  reporte_at?: string | null
 }
+
+export type TipoCuenta = 'ecommerce' | 'formularios' | 'mensajeria'
+export type KanbanEstado = 'problemas' | 'corriendo' | 'optimizar' | 'escalar' | 'onboarding'
+export type KanbanSub = 'config' | 'estrategia' | 'listos'
 
 export type AdAccountConfig = {
   id: number

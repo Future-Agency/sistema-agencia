@@ -1,6 +1,20 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { supabase, type AdAccount, type AdAccountConfig, type AdCambioLog, type AdCreativo, type AdCampana, type PeriodMetrics, type Cliente, type AdRevision } from '@/lib/supabase'
+import { supabase, type AdAccount, type AdAccountConfig, type AdCambioLog, type AdCreativo, type AdCampana, type PeriodMetrics, type Cliente, type AdRevision, type TipoCuenta, type KanbanEstado, type KanbanSub } from '@/lib/supabase'
+
+export const TIPO_CUENTA_OPTS: { id: TipoCuenta; label: string; icon: string; color: string }[] = [
+  { id: 'ecommerce', label: 'Ecommerce', icon: 'fa-cart-shopping', color: '#00d97e' },
+  { id: 'formularios', label: 'Formularios', icon: 'fa-file-lines', color: '#5e72e4' },
+  { id: 'mensajeria', label: 'Mensajería', icon: 'fa-comment-dots', color: '#f5a623' },
+]
+
+export const KANBAN_OPTS: { id: KanbanEstado; label: string; color: string; icon: string; desc: string }[] = [
+  { id: 'problemas', label: 'Problemas', color: '#f5365c', icon: 'fa-triangle-exclamation', desc: 'Pago, entrega, links, creativos mal' },
+  { id: 'corriendo', label: 'Ads Corriendo', color: '#00d97e', icon: 'fa-rocket', desc: 'Normalidad o esperando resultados' },
+  { id: 'optimizar', label: 'Ads a Optimizar', color: '#f5a623', icon: 'fa-screwdriver-wrench', desc: 'Resultados negativos, hay que mover' },
+  { id: 'escalar', label: 'Ads a Escalar', color: '#11cdef', icon: 'fa-chart-line', desc: 'Invertir más para maximizar' },
+  { id: 'onboarding', label: 'Onboarding', color: '#8965e0', icon: 'fa-rocket-launch', desc: 'Configuración, estrategia, listos' },
+]
 
 type Props = {
   account: AdAccount
@@ -39,6 +53,15 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
   const [showRevisionForm, setShowRevisionForm] = useState(false)
   const [revisionExpandida, setRevisionExpandida] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  const [tiposCuenta, setTiposCuenta] = useState<TipoCuenta[]>(account.tipos_cuenta || [])
+  const [kanbanEstado, setKanbanEstado] = useState<KanbanEstado>(account.kanban_estado || 'corriendo')
+  const [kanbanSub, setKanbanSub] = useState<KanbanSub | null>(account.kanban_sub || null)
+  const [revMensualAt, setRevMensualAt] = useState<string | null>(account.revision_mensual_at || null)
+  const [reporteAt, setReporteAt] = useState<string | null>(account.reporte_at || null)
+
+  function toggleTipoCuenta(t: TipoCuenta) {
+    setTiposCuenta(arr => arr.includes(t) ? arr.filter(x => x !== t) : [...arr, t])
+  }
 
   // Form states
   const [configForm, setConfigForm] = useState({ estado_cuenta: 'activa', estrategia: '', roas_break_even: '', tipo_conversion: '', objetivo_mensual: '', notas: '' })
@@ -100,6 +123,18 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
     } else {
       await supabase.from('ad_account_config').insert(payload)
     }
+    // Persistir clasificacion + kanban + checks en ad_accounts
+    const adPayload: any = {
+      tipos_cuenta: tiposCuenta,
+      kanban_estado: kanbanEstado,
+      kanban_sub: kanbanEstado === 'onboarding' ? (kanbanSub || 'config') : null,
+      revision_mensual_at: revMensualAt,
+      reporte_at: reporteAt,
+    }
+    if (account.kanban_estado !== kanbanEstado) {
+      adPayload.kanban_changed_at = new Date().toISOString()
+    }
+    await supabase.from('ad_accounts').update(adPayload).eq('id', account.id)
     await loadData()
     setSaving(false)
   }
@@ -379,6 +414,74 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
             <div className="form-group">
               <label className="label">Notas</label>
               <textarea className="input textarea" placeholder="Notas internas sobre esta cuenta..." value={configForm.notas} onChange={e => setConfigForm({ ...configForm, notas: e.target.value })} />
+            </div>
+
+            {/* Tipos de cuenta + Estado Kanban */}
+            <div style={{ marginTop: 12, padding: 14, background: '#0a0a14', borderRadius: 8, border: '1px solid #2a2a40' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#a0a0b8', marginBottom: 10 }}>
+                <i className="fas fa-tags" style={{ marginRight: 6, color: '#5e72e4' }} />Clasificación
+              </div>
+              <div className="form-group">
+                <label className="label">Tipos de cuenta (puede ser más de uno)</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {TIPO_CUENTA_OPTS.map(opt => {
+                    const sel = tiposCuenta.includes(opt.id)
+                    return (
+                      <button key={opt.id} type="button" onClick={() => toggleTipoCuenta(opt.id)} style={{
+                        padding: '7px 14px',
+                        background: sel ? `${opt.color}22` : 'transparent',
+                        border: `1px solid ${sel ? opt.color + '88' : '#2a2a40'}`,
+                        borderRadius: 999,
+                        color: sel ? opt.color : '#a0a0b8',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}>
+                        <i className={`fas ${opt.icon}`} style={{ marginRight: 6 }} />{opt.label}
+                        {sel && <i className="fas fa-check" style={{ marginLeft: 6, fontSize: 10 }} />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="label">Estado del Kanban</label>
+                  <select className="select-custom" style={{ width: '100%' }} value={kanbanEstado} onChange={e => setKanbanEstado(e.target.value as KanbanEstado)}>
+                    {KANBAN_OPTS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                </div>
+                {kanbanEstado === 'onboarding' && (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="label">Sub-fase de Onboarding</label>
+                    <select className="select-custom" style={{ width: '100%' }} value={kanbanSub || 'config'} onChange={e => setKanbanSub(e.target.value as KanbanSub)}>
+                      <option value="config">Configuración (CP / CRM / E-comm)</option>
+                      <option value="estrategia">Estrategia</option>
+                      <option value="listos">Listos para publicar</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Checks: revision mensual + reporte */}
+            <div style={{ marginTop: 12, padding: 14, background: '#0a0a14', borderRadius: 8, border: '1px solid #2a2a40' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#a0a0b8', marginBottom: 10 }}>
+                <i className="fas fa-clipboard-check" style={{ marginRight: 6, color: '#00d97e' }} />Estado del mes
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <CheckCard
+                  label="Revisión mensual"
+                  icon="fa-magnifying-glass-chart"
+                  fechaIso={revMensualAt}
+                  onToggle={() => setRevMensualAt(revMensualAt ? null : new Date().toISOString())}
+                />
+                <CheckCard
+                  label="Reporte enviado"
+                  icon="fa-file-export"
+                  fechaIso={reporteAt}
+                  onToggle={() => setReporteAt(reporteAt ? null : new Date().toISOString())}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -788,5 +891,42 @@ export default function GestionAnuncio({ account, cliente, onBack }: Props) {
         </div>
       )}
     </div>
+  )
+}
+
+function CheckCard({ label, icon, fechaIso, onToggle }: { label: string; icon: string; fechaIso: string | null; onToggle: () => void }) {
+  const done = !!fechaIso
+  return (
+    <button onClick={onToggle} style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '12px 14px',
+      background: done ? 'rgba(0,217,126,.08)' : '#1a1a28',
+      border: `1px solid ${done ? '#00d97e55' : '#2a2a40'}`,
+      borderRadius: 10,
+      cursor: 'pointer',
+      width: '100%',
+      textAlign: 'left',
+      transition: 'all .15s',
+    }}>
+      <div style={{
+        width: 28, height: 28, borderRadius: 8,
+        background: done ? '#00d97e' : 'transparent',
+        border: `2px solid ${done ? '#00d97e' : '#3a3a55'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+        color: done ? '#04130a' : '#6a6a80',
+        fontSize: 13,
+      }}>
+        {done ? <i className="fas fa-check" /> : <i className={`fas ${icon}`} />}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: done ? '#00d97e' : '#e8e8f0' }}>{label}</div>
+        <div style={{ fontSize: 11, color: '#a0a0b8', marginTop: 2 }}>
+          {done
+            ? <>Marcado el {new Date(fechaIso).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })} · click para desmarcar</>
+            : <>No hecho · click para marcar como hecho</>}
+        </div>
+      </div>
+    </button>
   )
 }

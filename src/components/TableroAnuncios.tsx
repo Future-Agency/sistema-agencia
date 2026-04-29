@@ -1,8 +1,8 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Cliente, Owner, AdAccount, PeriodMetrics } from '@/lib/supabase'
-import GestionAnuncio from './GestionAnuncio'
+import type { Cliente, Owner, AdAccount, PeriodMetrics, TipoCuenta, KanbanEstado, KanbanSub } from '@/lib/supabase'
+import GestionAnuncio, { TIPO_CUENTA_OPTS, KANBAN_OPTS } from './GestionAnuncio'
 import GestionCuentasModal from './GestionCuentasModal'
 import CambiosSinEvaluarModal from './CambiosSinEvaluarModal'
 import type { Agencia } from '@/lib/supabase'
@@ -109,6 +109,8 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
   const [ownerFilter, setOwnerFilter] = useState<string>('all')
   const [editingLink, setEditingLink] = useState<number | null>(null)
   const [selectedAccount, setSelectedAccount] = useState<AdAccount | null>(null)
+  const [tipoFilter, setTipoFilter] = useState<TipoCuenta[]>([])
+  const [vistaModo, setVistaModo] = useState<'tabla' | 'kanban'>('tabla')
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<string>('')
   const [showManageModal, setShowManageModal] = useState(false)
@@ -173,6 +175,12 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
         return cliente.owner_id === ownerFilter
       })
     }
+    if (tipoFilter.length > 0) {
+      rs = rs.filter(r => {
+        const tipos = (r.acc.tipos_cuenta || []) as TipoCuenta[]
+        return tipoFilter.some(t => tipos.includes(t))
+      })
+    }
     rs.sort((a, b) => {
       let va: number | string = 0, vb: number | string = 0
       if (sortKey === 'account_name') { va = a.acc.account_name; vb = b.acc.account_name }
@@ -181,7 +189,7 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
       return sortDir === 'asc' ? (va as number) - (vb as number) : (vb as number) - (va as number)
     })
     return rs
-  }, [rows, search, statusFilter, ownerFilter, clientes, sortKey, sortDir])
+  }, [rows, search, statusFilter, ownerFilter, tipoFilter, clientes, sortKey, sortDir])
 
   const totals = useMemo(() => {
     const ars = rows.filter(r => r.acc.currency === 'ARS')
@@ -389,6 +397,56 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
         </span>
       </div>
 
+      {/* Tipo de cuenta filter + Toggle Vista */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, color: '#6a6a80', fontWeight: 600, textTransform: 'uppercase', letterSpacing: .5 }}>Tipo:</span>
+        {TIPO_CUENTA_OPTS.map(opt => {
+          const sel = tipoFilter.includes(opt.id)
+          const count = rows.filter(r => (r.acc.tipos_cuenta || []).includes(opt.id)).length
+          return (
+            <span key={opt.id}
+              className={`owner-chip ${sel ? 'active' : ''}`}
+              onClick={() => setTipoFilter(arr => arr.includes(opt.id) ? arr.filter(x => x !== opt.id) : [...arr, opt.id])}
+              style={sel ? { borderColor: opt.color, color: opt.color, background: opt.color + '18' } : {}}>
+              <i className={`fas ${opt.icon}`} style={{ marginRight: 4 }} />{opt.label} ({count})
+              {sel && <i className="fas fa-check" style={{ marginLeft: 5, fontSize: 9 }} />}
+            </span>
+          )
+        })}
+        {tipoFilter.length > 0 && (
+          <span className="owner-chip" onClick={() => setTipoFilter([])} style={{ color: '#f5365c', borderColor: '#f5365c44' }}>
+            <i className="fas fa-times" style={{ marginRight: 4 }} />Limpiar
+          </span>
+        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, background: '#1a1a28', padding: 4, borderRadius: 8 }}>
+          {(['tabla', 'kanban'] as const).map(v => (
+            <button key={v} onClick={() => setVistaModo(v)} style={{
+              padding: '6px 14px',
+              fontSize: 11, fontWeight: 700,
+              border: 'none', borderRadius: 6,
+              cursor: 'pointer',
+              background: vistaModo === v ? 'linear-gradient(135deg, #5e72e4, #825ee4)' : 'transparent',
+              color: vistaModo === v ? '#fff' : '#8a8aa0',
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+            }}>
+              <i className={`fas fa-${v === 'tabla' ? 'table' : 'columns'}`} />
+              {v === 'tabla' ? 'Tabla' : 'Kanban'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {vistaModo === 'kanban' && (
+        <KanbanView
+          rows={filtered}
+          clientes={clientes}
+          owners={owners}
+          onSelect={a => setSelectedAccount(a)}
+          onUpdate={onUpdate}
+        />
+      )}
+
+      {vistaModo === 'tabla' && (<>
       {/* Table */}
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
@@ -517,6 +575,7 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
           </table>
         </div>
       </div>
+      </>)}
 
       {/* Alerts section */}
       {(adAccounts.some(a => a.account_status !== 1) || rows.some(r => r.spend === 0 && r.acc.account_status === 1)) && (
@@ -562,4 +621,213 @@ export default function TableroAnuncios({ clientes, owners, adAccounts, onUpdate
       )}
     </div>
   )
+}
+
+// ===================== KANBAN VIEW =====================
+function KanbanView({ rows, clientes, owners, onSelect, onUpdate }: { rows: Row[]; clientes: Cliente[]; owners: Owner[]; onSelect: (a: AdAccount) => void; onUpdate: () => void }) {
+  // Cuentas sin estado kanban van a 'corriendo' como default
+  function getEstado(r: Row): KanbanEstado {
+    return (r.acc.kanban_estado as KanbanEstado) || 'corriendo'
+  }
+
+  const SUBS: { id: KanbanSub; label: string; icon: string }[] = [
+    { id: 'config', label: 'Configuración (CP/CRM/E-comm)', icon: 'fa-gears' },
+    { id: 'estrategia', label: 'Estrategia', icon: 'fa-chess' },
+    { id: 'listos', label: 'Listos para publicar', icon: 'fa-paper-plane' },
+  ]
+
+  async function moverA(accId: number, estado: KanbanEstado, sub: KanbanSub | null = null) {
+    await supabase.from('ad_accounts').update({
+      kanban_estado: estado,
+      kanban_sub: estado === 'onboarding' ? (sub || 'config') : null,
+      kanban_changed_at: new Date().toISOString(),
+    }).eq('id', accId)
+    onUpdate()
+  }
+
+  function diasEnEstado(r: Row): number {
+    const ts = r.acc.kanban_changed_at
+    if (!ts) return 0
+    return Math.floor((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60 * 24))
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
+      {KANBAN_OPTS.map(col => {
+        const items = rows.filter(r => getEstado(r) === col.id)
+        return (
+          <div key={col.id} style={{
+            minWidth: 280, maxWidth: 320, flex: '1 0 280px',
+            background: '#0e0e18',
+            border: `1px solid ${col.color}33`,
+            borderTop: `3px solid ${col.color}`,
+            borderRadius: 10, padding: 12,
+            display: 'flex', flexDirection: 'column', gap: 10,
+            maxHeight: 'calc(100vh - 380px)', overflowY: 'auto',
+          }}>
+            {/* Header de columna */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <i className={`fas ${col.icon}`} style={{ color: col.color, fontSize: 14 }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: col.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{col.label}</span>
+              </div>
+              <span style={{ padding: '2px 8px', borderRadius: 999, background: `${col.color}22`, color: col.color, fontSize: 11, fontWeight: 700 }}>{items.length}</span>
+            </div>
+            <div style={{ fontSize: 10, color: '#6a6a80', lineHeight: 1.4 }}>{col.desc}</div>
+
+            {/* Sub-fases (solo onboarding) */}
+            {col.id === 'onboarding' ? (
+              <>
+                {SUBS.map(sub => {
+                  const subs = items.filter(r => (r.acc.kanban_sub || 'config') === sub.id)
+                  return (
+                    <div key={sub.id} style={{ marginTop: 4 }}>
+                      <div style={{ fontSize: 10, color: '#a0a0b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '6px 4px 4px', display: 'flex', justifyContent: 'space-between' }}>
+                        <span><i className={`fas ${sub.icon}`} style={{ marginRight: 5, color: col.color }} />{sub.label}</span>
+                        <span style={{ color: '#6a6a80' }}>{subs.length}</span>
+                      </div>
+                      {subs.map(r => <KanbanCard key={r.acc.id} row={r} clientes={clientes} owners={owners} colColor={col.color} dias={diasEnEstado(r)} estado={col.id} onClick={() => onSelect(r.acc)} onMove={moverA} />)}
+                      {subs.length === 0 && (
+                        <div style={{ fontSize: 10, color: '#3a3a55', fontStyle: 'italic', padding: '4px 8px' }}>—</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+            ) : (
+              <>
+                {items.map(r => <KanbanCard key={r.acc.id} row={r} clientes={clientes} owners={owners} colColor={col.color} dias={diasEnEstado(r)} estado={col.id} onClick={() => onSelect(r.acc)} onMove={moverA} />)}
+                {items.length === 0 && (
+                  <div style={{ fontSize: 11, color: '#4a4a60', fontStyle: 'italic', padding: 12, textAlign: 'center' }}>Sin cuentas en este estado</div>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function KanbanCard({ row, clientes, owners, colColor, dias, estado, onClick, onMove }: {
+  row: Row; clientes: Cliente[]; owners: Owner[]; colColor: string; dias: number; estado: KanbanEstado;
+  onClick: () => void; onMove: (id: number, e: KanbanEstado, s?: KanbanSub | null) => Promise<void>
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const cliente = clientes.find(c => c.id === row.acc.cliente_id)
+  const owner = cliente ? owners.find(o => o.id === cliente.owner_id) : null
+  const tipos = (row.acc.tipos_cuenta || []) as TipoCuenta[]
+  // Alerta si está mucho tiempo en CORRIENDO sin moverse
+  const alertaTiempo = estado === 'corriendo' && dias >= 14
+  const tienePagoOK = !!row.acc.revision_mensual_at && !!row.acc.reporte_at
+  return (
+    <div style={{
+      background: '#14142a',
+      border: `1px solid ${alertaTiempo ? '#f5a62355' : '#1f1f2e'}`,
+      borderRadius: 8, padding: 10,
+      cursor: 'pointer',
+      position: 'relative',
+      transition: 'all .15s',
+    }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = colColor + '55')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = alertaTiempo ? '#f5a62355' : '#1f1f2e')}
+    >
+      {/* Header card */}
+      <div onClick={onClick} style={{ marginBottom: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#e8e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {row.acc.account_name}
+        </div>
+        {cliente && (
+          <div style={{ fontSize: 10, color: owner?.color || '#6a6a80', marginTop: 2 }}>
+            {cliente.nombre}{owner ? ` · ${owner.nombre_corto}` : ''}
+          </div>
+        )}
+      </div>
+
+      {/* Tipos */}
+      {tipos.length > 0 && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+          {tipos.map(t => {
+            const opt = TIPO_CUENTA_OPTS.find(x => x.id === t)
+            if (!opt) return null
+            return (
+              <span key={t} style={{ fontSize: 9, padding: '1px 6px', background: `${opt.color}22`, color: opt.color, borderRadius: 4, fontWeight: 600 }}>
+                <i className={`fas ${opt.icon}`} style={{ fontSize: 8, marginRight: 3 }} />{opt.label}
+              </span>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Métricas mini */}
+      <div onClick={onClick} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#8a8aa0', marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>
+        <span><span style={{ color: '#6a6a80' }}>spend</span> {row.spend > 0 ? `$${formatCompact(row.spend)}` : '—'}</span>
+        <span><span style={{ color: '#6a6a80' }}>roas</span> {row.roas > 0 ? `${row.roas.toFixed(1)}x` : '—'}</span>
+      </div>
+
+      {/* Footer */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 9 }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {alertaTiempo && (
+            <span title="Mucho tiempo sin moverse" style={{ color: '#f5a623', fontWeight: 600 }}>
+              <i className="fas fa-clock" /> {dias}d
+            </span>
+          )}
+          {tienePagoOK && (
+            <span title="Revisión + reporte hechos" style={{ color: '#00d97e' }}>
+              <i className="fas fa-circle-check" />
+            </span>
+          )}
+        </div>
+        <button
+          onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
+          style={{ background: 'transparent', border: 'none', color: '#6a6a80', cursor: 'pointer', fontSize: 11, padding: 4 }}
+          title="Mover"
+        >
+          <i className="fas fa-arrows-up-down-left-right" />
+        </button>
+      </div>
+
+      {/* Menu mover */}
+      {menuOpen && (
+        <div onClick={e => e.stopPropagation()} style={{
+          position: 'absolute', right: 4, bottom: 32, zIndex: 10,
+          background: '#0a0a14', border: '1px solid #2a2a40', borderRadius: 8, padding: 4,
+          boxShadow: '0 8px 24px rgba(0,0,0,.4)',
+          minWidth: 200,
+        }}>
+          <div style={{ fontSize: 9, color: '#6a6a80', textTransform: 'uppercase', padding: '6px 8px', fontWeight: 700, letterSpacing: 0.5 }}>Mover a:</div>
+          {KANBAN_OPTS.filter(o => o.id !== estado && o.id !== 'onboarding').map(o => (
+            <button key={o.id} onClick={async () => { await onMove(row.acc.id, o.id); setMenuOpen(false) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', background: 'transparent', border: 'none', color: '#e8e8f0', fontSize: 11, cursor: 'pointer', borderRadius: 4, textAlign: 'left' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#1a1a28')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <i className={`fas ${o.icon}`} style={{ color: o.color, width: 14 }} />{o.label}
+            </button>
+          ))}
+          <div style={{ fontSize: 9, color: '#6a6a80', textTransform: 'uppercase', padding: '8px 8px 4px', fontWeight: 700, letterSpacing: 0.5, borderTop: '1px solid #1a1a28', marginTop: 4 }}>Onboarding:</div>
+          {[
+            { id: 'config' as KanbanSub, label: 'Configuración', icon: 'fa-gears' },
+            { id: 'estrategia' as KanbanSub, label: 'Estrategia', icon: 'fa-chess' },
+            { id: 'listos' as KanbanSub, label: 'Listos publicar', icon: 'fa-paper-plane' },
+          ].map(s => (
+            <button key={s.id} onClick={async () => { await onMove(row.acc.id, 'onboarding', s.id); setMenuOpen(false) }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', background: 'transparent', border: 'none', color: '#e8e8f0', fontSize: 11, cursor: 'pointer', borderRadius: 4, textAlign: 'left' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#1a1a28')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <i className={`fas ${s.icon}`} style={{ color: '#8965e0', width: 14 }} />{s.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace('.0', '') + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(0) + 'K'
+  return Math.round(n).toString()
 }
