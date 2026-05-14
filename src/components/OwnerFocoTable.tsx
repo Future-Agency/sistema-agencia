@@ -1,9 +1,11 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { SemaforoIcon, Badge } from './ui'
-import { supabase, type Cliente, type Owner, type Equipo } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo, type Pieza } from '@/lib/supabase'
 import { updateEstado } from '@/lib/estadoHelper'
-import { ESTADO_OPTIONS_ONGOING, getEstadoStyle } from '@/lib/estados'
+import { ESTADO_OPTIONS_ONGOING, getEstadoStyle, getStatesGroupedByArea } from '@/lib/estados'
+import { currentCicloMes, nextCicloMes, prevCicloMes, cicloMesLabel } from '@/lib/cycles'
+import { bulkQueryEstadoLoop, setEstadoLoop, deriveEstadoLoop } from '@/lib/loopState'
 
 type Props = {
   clientes: Cliente[]
@@ -11,6 +13,7 @@ type Props = {
   equipo: Equipo[]
   onUpdate: () => void
   onSelectCliente: (c: Cliente) => void
+  agenciaId?: string
 }
 
 const SEMAFORO_OPTIONS = [
@@ -28,12 +31,13 @@ const RIESGO_OPTIONS: { value: string; label: string; color: string; bg: string 
 ]
 
 const ESTADO_OPTIONS = [...ESTADO_OPTIONS_ONGOING, 'Onboarding']
+const ESTADO_GROUPS = getStatesGroupedByArea()
 
 const SEMAFORO_ORDER: Record<string, number> = { red: 0, yellow: 1, blue: 2, green: 3 }
 
 type SortMode = 'semaforo' | 'manual' | 'nombre'
 
-export default function OwnerFocoTable({ clientes, owner, equipo, onUpdate, onSelectCliente }: Props) {
+export default function OwnerFocoTable({ clientes, owner, equipo, onUpdate, onSelectCliente, agenciaId }: Props) {
   const editors = equipo.filter(e => e.rol === 'editor')
   const copys = equipo.filter(e => e.rol === 'copy')
   const disenadores = equipo.filter(e => e.rol === 'diseñador')
@@ -41,6 +45,105 @@ export default function OwnerFocoTable({ clientes, owner, equipo, onUpdate, onSe
   const [editingCell, setEditingCell] = useState<{ id: number; field: string } | null>(null)
   const [expandedNota, setExpandedNota] = useState<number | null>(null)
   const [sortMode, setSortMode] = useState<SortMode>('semaforo')
+
+  // Loop de mayo / junio / etc. — selector arriba; dos columnas (actual + siguiente)
+  const [selectedCycle, setSelectedCycle] = useState<string>(currentCicloMes())
+  const nextCycle = useMemo(() => nextCicloMes(selectedCycle), [selectedCycle])
+  const [estadosActual, setEstadosActual] = useState<Map<number, string>>(new Map())
+  const [estadosSig, setEstadosSig] = useState<Map<number, string>>(new Map())
+  // Estados derivados de piezas (fallback cuando no hay manual)
+  const [derivadosActual, setDerivadosActual] = useState<Map<number, string>>(new Map())
+  const [derivadosSig, setDerivadosSig] = useState<Map<number, string>>(new Map())
+  const [savingCycleId, setSavingCycleId] = useState<{ id: number; col: 'actual' | 'sig' } | null>(null)
+
+  // Generar la lista de ciclos (current ± 6 meses)
+  const cycleOptions = useMemo(() => {
+    const today = currentCicloMes()
+    const arr = [today]
+    let prev = today
+    for (let i = 0; i < 4; i++) {
+      prev = prevCicloMes(prev)
+      arr.push(prev)
+    }
+    let nxt = today
+    for (let i = 0; i < 6; i++) {
+      nxt = nextCicloMes(nxt)
+      arr.unshift(nxt)
+    }
+    // ordenar por fecha asc para mostrar passado→futuro
+    return arr.sort()
+  }, [])
+
+  // Cargar estados de los dos ciclos + piezas para derivar fallback
+  const reloadEstados = async () => {
+    if (!agenciaId || clientes.length === 0) return
+    const ids = clientes.map(c => c.id)
+    const [a, b, piezasRes] = await Promise.all([
+      bulkQueryEstadoLoop(agenciaId, selectedCycle, ids),
+      bulkQueryEstadoLoop(agenciaId, nextCycle, ids),
+      supabase.from('piezas').select('*')
+        .eq('agencia_id', agenciaId)
+        .in('cliente_id', ids)
+        .in('ciclo_mes', [selectedCycle, nextCycle]),
+    ])
+    setEstadosActual(a)
+    setEstadosSig(b)
+    // Build derivados maps
+    const piezas = (piezasRes.data ?? []) as Pieza[]
+    const groupByClienteCiclo = new Map<string, Pieza[]>()
+    for (const p of piezas) {
+      const k = `${p.cliente_id}::${p.ciclo_mes}`
+      if (!groupByClienteCiclo.has(k)) groupByClienteCiclo.set(k, [])
+      groupByClienteCiclo.get(k)!.push(p)
+    }
+    const derAct = new Map<number, string>()
+    const derSig = new Map<number, string>()
+    groupByClienteCiclo.forEach((ps, k) => {
+      const [cidStr, ciclo] = k.split('::')
+      const cid = Number(cidStr)
+      const derived = deriveEstadoLoop(ps)
+      if (!derived) return
+      if (ciclo === selectedCycle) derAct.set(cid, derived)
+      else if (ciclo === nextCycle) derSig.set(cid, derived)
+    })
+    setDerivadosActual(derAct)
+    setDerivadosSig(derSig)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    if (!agenciaId || clientes.length === 0) return
+    reloadEstados().then(() => { if (cancelled) return })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agenciaId, clientes, selectedCycle, nextCycle])
+
+  // Realtime: si cambia el estado de loop en otra pestaña/device, refetch
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => { reloadEstados() }
+    window.addEventListener('estado-loop-changed', handler)
+    return () => window.removeEventListener('estado-loop-changed', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agenciaId, clientes, selectedCycle, nextCycle])
+
+  async function handleEstadoLoopChange(clienteId: number, ciclo: string, col: 'actual' | 'sig', estado: string) {
+    if (!agenciaId) return
+    setSavingCycleId({ id: clienteId, col })
+    const value = estado || null
+    const res = await setEstadoLoop({ agenciaId, clienteId, cicloMes: ciclo, estado: value })
+    setSavingCycleId(null)
+    if (res.ok) {
+      // Optimistic update local
+      const setter = col === 'actual' ? setEstadosActual : setEstadosSig
+      setter(prev => {
+        const next = new Map(prev)
+        if (value) next.set(clienteId, value); else next.delete(clienteId)
+        return next
+      })
+    }
+    setEditingCell(null)
+  }
 
   const sorted = useMemo(() => {
     const arr = [...clientes]
@@ -87,24 +190,45 @@ export default function OwnerFocoTable({ clientes, owner, equipo, onUpdate, onSe
 
   return (
     <div className="card" style={{ marginBottom: 20 }}>
-      <div className="card-header" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="card-header" style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 10 }}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>
           <i className="fas fa-crosshairs" style={{ color: owner.color, marginRight: 6 }} />
           FOCO — Clientes
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {(['semaforo', 'manual', 'nombre'] as SortMode[]).map(m => (
-            <button key={m} onClick={() => setSortMode(m)}
-              style={{
-                fontSize: 10, padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
-                border: sortMode === m ? `1px solid ${owner.color}` : '1px solid #2a2a40',
-                background: sortMode === m ? `${owner.color}15` : 'transparent',
-                color: sortMode === m ? owner.color : '#6a6a80',
-                fontWeight: 600,
-              }}>
-              {m === 'semaforo' ? '🔴🟡🟢' : m === 'manual' ? '↕ Manual' : 'A-Z'}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const }}>
+          {/* Cycle selector */}
+          {agenciaId && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 10, color: '#6a6a80', fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.4, marginRight: 4 }}>Loop actual:</span>
+              <select value={selectedCycle} onChange={e => setSelectedCycle(e.target.value)}
+                style={{
+                  fontSize: 11, padding: '3px 8px', borderRadius: 4,
+                  background: '#1a1a28', border: `1px solid ${owner.color}55`,
+                  color: owner.color, fontWeight: 700, cursor: 'pointer',
+                  textTransform: 'capitalize' as const,
+                }}>
+                {cycleOptions.map(c => <option key={c} value={c}>{cicloMesLabel(c)}</option>)}
+              </select>
+              <span style={{ fontSize: 10, color: '#6a6a80', marginLeft: 4 }}>
+                · siguiente: <strong style={{ color: '#a0a0b8', textTransform: 'capitalize' as const }}>{cicloMesLabel(nextCycle).split(' ')[0]}</strong>
+              </span>
+            </div>
+          )}
+          {/* Sort mode */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {(['semaforo', 'manual', 'nombre'] as SortMode[]).map(m => (
+              <button key={m} onClick={() => setSortMode(m)}
+                style={{
+                  fontSize: 10, padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
+                  border: sortMode === m ? `1px solid ${owner.color}` : '1px solid #2a2a40',
+                  background: sortMode === m ? `${owner.color}15` : 'transparent',
+                  color: sortMode === m ? owner.color : '#6a6a80',
+                  fontWeight: 600,
+                }}>
+                {m === 'semaforo' ? '🔴🟡🟢' : m === 'manual' ? '↕ Manual' : 'A-Z'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div style={{ overflow: 'auto' }}>
@@ -114,7 +238,12 @@ export default function OwnerFocoTable({ clientes, owner, equipo, onUpdate, onSe
               {sortMode === 'manual' && <th style={{ ...thStyle, width: 30 }}></th>}
               <th style={thStyle}></th>
               <th style={thStyle}>Cliente</th>
-              <th style={thStyle}>Estado</th>
+              <th style={{ ...thStyle, color: '#5e72e4', minWidth: 130, textTransform: 'capitalize' as const }}>
+                Loop {cicloMesLabel(selectedCycle).split(' ')[0]}
+              </th>
+              <th style={{ ...thStyle, color: '#a78bfa', minWidth: 130, textTransform: 'capitalize' as const }}>
+                Loop {cicloMesLabel(nextCycle).split(' ')[0]}
+              </th>
               <th style={thStyle}>Últ. Contacto</th>
               <th style={thStyle}>Últ. Pub</th>
               <th style={{ ...thStyle, minWidth: 180 }}>Próximo Hito</th>
@@ -173,23 +302,101 @@ export default function OwnerFocoTable({ clientes, owner, equipo, onUpdate, onSe
                     </div>
                   </td>
 
-                  {/* Estado */}
-                  <td style={tdStyle}>
-                    {editingCell?.id === c.id && editingCell?.field === 'estado' ? (
-                      <select className="editable-select" autoFocus value={c.estado}
-                        style={{ fontSize: 10, padding: '2px 4px', minWidth: 120 }}
-                        onChange={e => updateCliente(c.id, 'estado', e.target.value)}
-                        onBlur={() => setEditingCell(null)}>
-                        {ESTADO_OPTIONS.map(e => <option key={e} value={e}>{e}</option>)}
-                        {!ESTADO_OPTIONS.includes(c.estado) && <option value={c.estado}>{c.estado}</option>}
-                      </select>
-                    ) : (
-                      <span onClick={() => setEditingCell({ id: c.id, field: 'estado' })}
-                        style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: 4, background: estadoStyle.bg, color: estadoStyle.color, fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        {c.estado || '-'}
-                      </span>
-                    )}
-                  </td>
+                  {/* Loop actual ({selectedCycle}) */}
+                  {(() => {
+                    const manualActual = estadosActual.get(c.id) || ''
+                    const derivedActual = derivadosActual.get(c.id) || ''
+                    const estadoActual = manualActual || derivedActual
+                    const isManualActual = !!manualActual
+                    const styleActual = getEstadoStyle(estadoActual)
+                    const isEditingActual = editingCell?.id === c.id && editingCell?.field === 'loop_actual'
+                    const isSavingActual = savingCycleId?.id === c.id && savingCycleId?.col === 'actual'
+                    return (
+                      <td style={tdStyle}>
+                        {isEditingActual ? (
+                          <select className="editable-select" autoFocus value={manualActual}
+                            style={{ fontSize: 10, padding: '2px 4px', minWidth: 160 }}
+                            onChange={e => handleEstadoLoopChange(c.id, selectedCycle, 'actual', e.target.value)}
+                            onBlur={() => setEditingCell(null)}>
+                            <option value="">— sin estado —</option>
+                            {ESTADO_GROUPS.map(g => (
+                              <optgroup key={g.area} label={g.label}>
+                                {g.estados.map(e => <option key={`${g.area}:${e}`} value={e}>{e}</option>)}
+                              </optgroup>
+                            ))}
+                            <optgroup label="Onboarding">
+                              <option value="Onboarding">Onboarding</option>
+                            </optgroup>
+                          </select>
+                        ) : (
+                          <span onClick={() => setEditingCell({ id: c.id, field: 'loop_actual' })}
+                            title={isManualActual ? 'Manual' : derivedActual ? 'Derivado de piezas (auto)' : 'Sin estado · click para asignar'}
+                            style={{
+                              cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
+                              background: estadoActual ? styleActual.bg : 'rgba(106,106,128,.1)',
+                              color: estadoActual ? styleActual.color : '#4a4a60',
+                              fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' as const,
+                              opacity: isSavingActual ? 0.6 : !isManualActual && derivedActual ? 0.8 : 1,
+                              border: estadoActual ? 'none' : '1px dashed #2a2a40',
+                              fontStyle: !isManualActual && derivedActual ? 'italic' as const : 'normal' as const,
+                            }}>
+                            {estadoActual || '+ asignar'}
+                            {!isManualActual && derivedActual && (
+                              <span style={{ fontSize: 8, marginLeft: 4, opacity: 0.7 }}>·auto</span>
+                            )}
+                          </span>
+                        )}
+                      </td>
+                    )
+                  })()}
+
+                  {/* Loop siguiente ({nextCycle}) */}
+                  {(() => {
+                    const manualSig = estadosSig.get(c.id) || ''
+                    const derivedSig = derivadosSig.get(c.id) || ''
+                    const estadoSig = manualSig || derivedSig
+                    const isManualSig = !!manualSig
+                    const styleSig = getEstadoStyle(estadoSig)
+                    const isEditingSig = editingCell?.id === c.id && editingCell?.field === 'loop_sig'
+                    const isSavingSig = savingCycleId?.id === c.id && savingCycleId?.col === 'sig'
+                    return (
+                      <td style={tdStyle}>
+                        {isEditingSig ? (
+                          <select className="editable-select" autoFocus value={manualSig}
+                            style={{ fontSize: 10, padding: '2px 4px', minWidth: 160 }}
+                            onChange={e => handleEstadoLoopChange(c.id, nextCycle, 'sig', e.target.value)}
+                            onBlur={() => setEditingCell(null)}>
+                            <option value="">— sin estado —</option>
+                            {ESTADO_GROUPS.map(g => (
+                              <optgroup key={g.area} label={g.label}>
+                                {g.estados.map(e => <option key={`${g.area}:${e}`} value={e}>{e}</option>)}
+                              </optgroup>
+                            ))}
+                            <optgroup label="Onboarding">
+                              <option value="Onboarding">Onboarding</option>
+                            </optgroup>
+                          </select>
+                        ) : (
+                          <span onClick={() => setEditingCell({ id: c.id, field: 'loop_sig' })}
+                            title={isManualSig ? 'Manual' : derivedSig ? 'Derivado de piezas (auto)' : 'Sin estado · click para asignar'}
+                            style={{
+                              cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
+                              background: estadoSig ? styleSig.bg : 'rgba(106,106,128,.05)',
+                              color: estadoSig ? styleSig.color : '#3a3a55',
+                              fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' as const,
+                              opacity: isSavingSig ? 0.6 : !isManualSig && derivedSig ? 0.8 : 1,
+                              border: estadoSig ? 'none' : '1px dashed #1f1f30',
+                              fontStyle: estadoSig && !isManualSig ? 'italic' as const : estadoSig ? 'normal' as const : 'italic' as const,
+                            }}>
+                            {estadoSig || '+ próximo'}
+                            {!isManualSig && derivedSig && (
+                              <span style={{ fontSize: 8, marginLeft: 4, opacity: 0.7 }}>·auto</span>
+                            )}
+                          </span>
+                        )}
+                      </td>
+                    )
+                  })()}
 
                   {/* Último contacto */}
                   <td style={tdStyle}>

@@ -5,13 +5,18 @@ import { updateEstado } from '@/lib/estadoHelper'
 import { SemaforoIcon, Badge } from './ui'
 import { generarReportePDF } from '@/lib/reportePDF'
 import PortalClienteAdmin from './PortalClienteAdmin'
+import PiezasPanel from './PiezasPanel'
+import ProcesoTimeline from './ProcesoTimeline'
+import ObservacionesCliente from './ObservacionesCliente'
+import EstrategiaCard from './EstrategiaCard'
+import type { CurrentUser } from '@/lib/users'
 
-type Props = { cliente: Cliente; owners: Owner[]; equipo: Equipo[]; adAccounts: AdAccount[]; onBack: () => void; onUpdate: () => void; onDelete: () => void; showToast: (msg: string, type: 'success' | 'error') => void }
+type Props = { cliente: Cliente; owners: Owner[]; equipo: Equipo[]; adAccounts: AdAccount[]; onBack: () => void; onUpdate: () => void; onDelete: () => void; showToast: (msg: string, type: 'success' | 'error') => void; agenciaId?: string; currentUser?: CurrentUser }
 
-export default function TableroCliente({ cliente, owners, equipo, adAccounts, onBack, onUpdate, onDelete, showToast }: Props) {
+export default function TableroCliente({ cliente, owners, equipo, adAccounts, onBack, onUpdate, onDelete, showToast, agenciaId, currentUser }: Props) {
   const [reportePeriod, setReportePeriod] = useState<'7d' | '15d' | '30d'>('30d')
   const cuentasCliente = adAccounts.filter(a => a.cliente_id === cliente.id)
-  const [tab, setTab] = useState('proceso')
+  const [tab, setTab] = useState<'piezas' | 'proceso' | 'reportes' | 'notas'>('piezas')
   const [nota, setNota] = useState('')
   const [notas, setNotas] = useState<Nota[]>([])
   const [fases, setFases] = useState<FaseCliente[]>([])
@@ -232,13 +237,33 @@ export default function TableroCliente({ cliente, owners, equipo, adAccounts, on
         </div>
       )}
 
+      {/* Estrategia general (única por cliente, cross-loop) */}
+      <EstrategiaCard cliente={cliente} canEdit={currentUser?.role === 'admin' || currentUser?.role === 'semi-admin'} onUpdate={onUpdate} />
+
+      {/* Observaciones cross-loop — siempre visibles, no dependen del tab */}
+      <ObservacionesCliente cliente={cliente} currentUser={currentUser} onUpdate={onUpdate} />
+
       <div className="tabs" style={{ marginBottom: 20 }}>
-        {(['proceso', 'reportes', 'notas'] as const).map(t => (
+        {(['piezas', 'proceso', 'reportes', 'notas'] as const).map(t => (
           <div key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-            {t === 'proceso' ? 'Proceso' : t === 'reportes' ? 'Reportes' : `Notas (${notas.length})`}
+            {t === 'piezas' ? '📋 Piezas del mes' : t === 'proceso' ? 'Proceso' : t === 'reportes' ? 'Reportes' : `Notas (${notas.length})`}
           </div>
         ))}
       </div>
+
+      {tab === 'piezas' && agenciaId && currentUser && (
+        <PiezasPanel
+          agenciaId={agenciaId}
+          cliente={cliente}
+          equipo={equipo}
+          currentUser={currentUser}
+          onUpdate={onUpdate}
+        />
+      )}
+
+      {tab === 'proceso' && agenciaId && (
+        <ProcesoTimeline cliente={cliente} agenciaId={agenciaId} />
+      )}
 
       {tab === 'proceso' && (
         <div className="card">

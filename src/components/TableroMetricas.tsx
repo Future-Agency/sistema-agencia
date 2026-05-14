@@ -51,7 +51,7 @@ export default function TableroMetricas({ clientes, owners }: Props) {
   const throughput = useMemo(() => {
     const restarts = filteredLogs.filter(l =>
       l.estado_nuevo === 'GUIONES' && l.estado_anterior &&
-      ['METRICAS Y VOLVER A EMPEZAR', 'ANUNCIOS CHECK', 'ANUNCIOS PRENDIDOS', 'ANUNCIOS SIN ACTIVAR'].includes(l.estado_anterior)
+      ['METRICAS Y VOLVER A EMPEZAR', 'VOLVER A EMPEZAR', 'REPORTE ADS + ORGÁNICO', 'ANUNCIOS CHECK', 'ANUNCIOS PRENDIDOS', 'PROGAMADO'].includes(l.estado_anterior)
     )
     const unique = new Set(restarts.map(l => l.cliente_id))
     return unique.size
@@ -111,7 +111,7 @@ export default function TableroMetricas({ clientes, owners }: Props) {
 
       const restarts = ownerLogs.filter(l =>
         l.estado_nuevo === 'GUIONES' && l.estado_anterior &&
-        ['METRICAS Y VOLVER A EMPEZAR', 'ANUNCIOS CHECK', 'ANUNCIOS PRENDIDOS'].includes(l.estado_anterior)
+        ['METRICAS Y VOLVER A EMPEZAR', 'VOLVER A EMPEZAR', 'REPORTE ADS + ORGÁNICO', 'ANUNCIOS CHECK', 'ANUNCIOS PRENDIDOS'].includes(l.estado_anterior)
       )
       const loopCount = new Set(restarts.map(l => l.cliente_id)).size
 

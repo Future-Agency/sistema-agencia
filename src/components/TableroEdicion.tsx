@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import { supabase, type Cliente, type Owner, type Equipo } from '@/lib/supabase'
 
@@ -30,9 +30,44 @@ function getStyle(estado: string) {
 export default function TableroEdicion({ clientes, owners, equipo, onUpdate }: Props) {
   const [editingCell, setEditingCell] = useState<{ id: number; field: string } | null>(null)
   const [filterEditor, setFilterEditor] = useState('')
+  // Optimistic overrides — mapeo cliente.id → estado_edicion forzado mientras se persiste
+  const [optimistic, setOptimistic] = useState<Record<number, string>>({})
+  const [savingId, setSavingId] = useState<number | null>(null)
+  const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
 
   const editors = equipo.filter(e => e.rol === 'editor')
-  const ongoing = clientes.filter(c => !c.is_onboarding && c.estado)
+
+  // Aplica overrides optimistas sobre clientes prop
+  const clientesEffective = useMemo(() => {
+    if (Object.keys(optimistic).length === 0) return clientes
+    return clientes.map(c => optimistic[c.id] != null ? { ...c, estado_edicion: optimistic[c.id] } : c)
+  }, [clientes, optimistic])
+
+  const ongoing = clientesEffective.filter(c => !c.is_onboarding && c.estado)
+
+  // Limpiar overrides cuando la DB confirma (clientes prop ya tiene el valor esperado)
+  useEffect(() => {
+    setOptimistic(prev => {
+      const next = { ...prev }
+      let changed = false
+      for (const idStr of Object.keys(prev)) {
+        const id = Number(idStr)
+        const real = clientes.find(c => c.id === id)
+        if (real && real.estado_edicion === prev[id]) {
+          delete next[id]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [clientes])
+
+  // Auto-clear toast
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3000)
+    return () => clearTimeout(t)
+  }, [toast])
 
   const filtered = useMemo(() => {
     if (!filterEditor) return ongoing
@@ -63,13 +98,42 @@ export default function TableroEdicion({ clientes, owners, equipo, onUpdate }: P
     const clienteId = parseInt(result.draggableId)
     const cliente = filtered.find(c => c.id === clienteId)
     if (!cliente || cliente.estado_edicion === destEstado) return
-    await supabase.from('clientes').update({ estado_edicion: destEstado, updated_at: new Date().toISOString() }).eq('id', clienteId)
+
+    // 1. Optimistic — mover visualmente al instante
+    setOptimistic(prev => ({ ...prev, [clienteId]: destEstado }))
+    setSavingId(clienteId)
+
+    // 2. Persistir
+    const { error } = await supabase.from('clientes')
+      .update({ estado_edicion: destEstado, updated_at: new Date().toISOString() })
+      .eq('id', clienteId)
+
+    setSavingId(null)
+
+    // 3. Si falla, revertir + toast
+    if (error) {
+      setOptimistic(prev => {
+        const next = { ...prev }
+        delete next[clienteId]
+        return next
+      })
+      setToast({ msg: `Error guardando: ${error.message}`, type: 'err' })
+      return
+    }
+
+    setToast({ msg: `${cliente.nombre} → ${destEstado}`, type: 'ok' })
     onUpdate()
   }, [filtered, onUpdate])
 
   async function updateField(id: number, field: string, value: string | null) {
-    await supabase.from('clientes').update({ [field]: value, updated_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.from('clientes')
+      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .eq('id', id)
     setEditingCell(null)
+    if (error) {
+      setToast({ msg: `Error: ${error.message}`, type: 'err' })
+      return
+    }
     onUpdate()
   }
 
@@ -166,9 +230,9 @@ export default function TableroEdicion({ clientes, owners, equipo, onUpdate }: P
                               borderBottom: `1px solid ${s.color}15`,
                               borderRight: '1px solid #2a2a40',
                               cursor: 'grab',
-                              opacity: dragSnapshot.isDragging ? 0.9 : 1,
-                              boxShadow: dragSnapshot.isDragging ? `0 4px 20px ${s.color}30` : 'none',
-                              transition: dragSnapshot.isDragging ? 'none' : 'background .15s',
+                              opacity: dragSnapshot.isDragging ? 0.9 : savingId === c.id ? 0.7 : 1,
+                              boxShadow: dragSnapshot.isDragging ? `0 4px 20px ${s.color}30` : savingId === c.id ? `0 0 0 1px ${s.color}88` : 'none',
+                              transition: dragSnapshot.isDragging ? 'none' : 'background .15s, opacity .2s',
                             }}
                             onMouseEnter={e => { if (!dragSnapshot.isDragging) (e.currentTarget as HTMLElement).style.background = s.bg }}
                             onMouseLeave={e => { if (!dragSnapshot.isDragging) (e.currentTarget as HTMLElement).style.background = s.rowBg }}
@@ -294,6 +358,22 @@ export default function TableroEdicion({ clientes, owners, equipo, onUpdate }: P
           )
         })}
       </DragDropContext>
+
+      {/* Toast de feedback */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 20, right: 20, zIndex: 999,
+          padding: '10px 16px', borderRadius: 8,
+          background: toast.type === 'ok' ? 'rgba(0,217,126,.15)' : 'rgba(245,54,92,.15)',
+          border: `1px solid ${toast.type === 'ok' ? '#00d97e' : '#f5365c'}`,
+          color: toast.type === 'ok' ? '#00d97e' : '#f5365c',
+          fontSize: 12, fontWeight: 600,
+          boxShadow: '0 4px 16px rgba(0,0,0,.3)',
+        }}>
+          <i className={`fas ${toast.type === 'ok' ? 'fa-check-circle' : 'fa-exclamation-circle'}`} style={{ marginRight: 6 }} />
+          {toast.msg}
+        </div>
+      )}
     </div>
   )
 }

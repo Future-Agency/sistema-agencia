@@ -29,3 +29,8 @@ npm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code + planning (workflow local, no del proyecto)
+.claude/
+.planning/
+get-shit-done/

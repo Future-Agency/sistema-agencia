@@ -1,0 +1,236 @@
+// Phase A — Helpers para gestión de piezas (deliverables) por cliente x ciclo.
+// Tabla: sql/2026-05-08_phase_A_piezas.sql
+
+import { supabase, type Cliente, type Pieza, type PiezaTipo, type ClienteCicloRecursos } from './supabase'
+import type { UserArea } from './users'
+
+/**
+ * Pipeline de áreas que atraviesa cada tipo de pieza, en orden.
+ * Refleja la regla: copys → grab → edit → diseno → subida → anuncios.
+ * Carrousel / historia no van por grab ni edit (son contenido estático con copy).
+ * Portada va sólo por diseno → subida (depende del video padre estar editado).
+ * Todas terminan en 'anuncios' (cierre de ciclo: activación de ads + reporte).
+ */
+export const PIPELINE_BY_TIPO: Record<PiezaTipo, UserArea[]> = {
+  video:     ['copys', 'grab', 'edit', 'diseno', 'subida', 'anuncios'],
+  portada:   ['diseno', 'subida', 'anuncios'],
+  carrousel: ['copys', 'diseno', 'subida', 'anuncios'],
+  historia:  ['copys', 'diseno', 'subida', 'anuncios'],
+}
+
+export const PIEZA_META: Record<PiezaTipo, { label: string; emoji: string; color: string; plural: string }> = {
+  video:     { label: 'Video',     emoji: '🎬', color: '#5e72e4', plural: 'Videos' },
+  portada:   { label: 'Portada',   emoji: '🖼️', color: '#f5a623', plural: 'Portadas' },
+  carrousel: { label: 'Carrousel', emoji: '🎠', color: '#8965e0', plural: 'Carrouseles' },
+  historia:  { label: 'Historia',  emoji: '📱', color: '#ec4ad8', plural: 'Historias' },
+}
+
+export type PlanPiezas = {
+  plan_videos: number
+  plan_portadas: number
+  plan_carrouseles: number
+  plan_historias: number
+}
+
+const MIN_PLAN: PlanPiezas = {
+  plan_videos: 15,
+  plan_portadas: 15,
+  plan_carrouseles: 4,
+  plan_historias: 4,
+}
+
+export function planFromCliente(c: Cliente): PlanPiezas {
+  return {
+    plan_videos:      c.plan_videos      ?? MIN_PLAN.plan_videos,
+    plan_portadas:    c.plan_portadas    ?? MIN_PLAN.plan_portadas,
+    plan_carrouseles: c.plan_carrouseles ?? MIN_PLAN.plan_carrouseles,
+    plan_historias:   c.plan_historias   ?? MIN_PLAN.plan_historias,
+  }
+}
+
+export function totalPiezasFromPlan(p: PlanPiezas): number {
+  return p.plan_videos + p.plan_portadas + p.plan_carrouseles + p.plan_historias
+}
+
+/**
+ * Genera el batch mensual de piezas para un cliente y ciclo dado.
+ * Si ya existen piezas para ese (cliente, ciclo, tipo), agrega sólo las que faltan
+ * para llegar al plan (sin duplicar números).
+ */
+export async function generateBatch(input: {
+  agenciaId: string
+  cliente: Cliente
+  cicloMes: string
+  /** Si se omite, usa el plan del cliente */
+  plan?: PlanPiezas
+}): Promise<{ inserted: number; existing: number; error?: string }> {
+  const plan = input.plan ?? planFromCliente(input.cliente)
+  const { cliente, cicloMes, agenciaId } = input
+
+  // Cuáles ya existen
+  const { data: existing, error: e1 } = await supabase
+    .from('piezas')
+    .select('tipo, numero')
+    .eq('cliente_id', cliente.id)
+    .eq('ciclo_mes', cicloMes)
+  if (e1) return { inserted: 0, existing: 0, error: e1.message }
+
+  const existsByTipo = new Map<PiezaTipo, Set<number>>()
+  for (const r of existing ?? []) {
+    const t = r.tipo as PiezaTipo
+    if (!existsByTipo.has(t)) existsByTipo.set(t, new Set())
+    existsByTipo.get(t)!.add(r.numero)
+  }
+
+  const targetCounts: Record<PiezaTipo, number> = {
+    video:     plan.plan_videos,
+    portada:   plan.plan_portadas,
+    carrousel: plan.plan_carrouseles,
+    historia:  plan.plan_historias,
+  }
+
+  const toInsert: Partial<Pieza>[] = []
+  for (const tipo of ['video', 'portada', 'carrousel', 'historia'] as PiezaTipo[]) {
+    const have = existsByTipo.get(tipo) ?? new Set()
+    const target = targetCounts[tipo]
+    for (let n = 1; n <= target; n++) {
+      if (have.has(n)) continue
+      toInsert.push({
+        agencia_id: agenciaId,
+        cliente_id: cliente.id,
+        tipo,
+        ciclo_mes: cicloMes,
+        numero: n,
+        // copywriter / editor / diseñador heredados del cliente como default
+        copywriter_id: cliente.copy_id ?? null,
+        editor_id: cliente.editor_id ?? null,
+        disenador_id: cliente.disenador_id ?? null,
+      })
+    }
+  }
+
+  let existingCount = 0
+  existsByTipo.forEach(set => { existingCount += set.size })
+
+  if (toInsert.length === 0) {
+    return { inserted: 0, existing: existingCount }
+  }
+
+  const { error: e2 } = await supabase.from('piezas').insert(toInsert)
+  if (e2) return { inserted: 0, existing: existingCount, error: e2.message }
+
+  return { inserted: toInsert.length, existing: existingCount }
+}
+
+export async function queryPiezasByCliente(
+  clienteId: number,
+  cicloMes?: string
+): Promise<Pieza[]> {
+  let q = supabase.from('piezas').select('*').eq('cliente_id', clienteId)
+  if (cicloMes) q = q.eq('ciclo_mes', cicloMes)
+  q = q.order('tipo').order('numero')
+  const { data, error } = await q
+  if (error) {
+    if (error.message?.toLowerCase().includes('does not exist') || error.code === '42P01' || error.code === 'PGRST205') {
+      console.warn('[piezas] tabla no existe — correr sql/2026-05-08_phase_A_piezas.sql')
+      return []
+    }
+    console.error('[piezas] query error:', error)
+    return []
+  }
+  return (data ?? []) as Pieza[]
+}
+
+export type PiezaSummary = {
+  totalPiezas: number
+  porTipo: Record<PiezaTipo, { total: number; aprobadas: number; enProgreso: number; pendientes: number }>
+}
+
+/** Devuelve resumen agregado de un set de piezas. */
+export function summarizePiezas(piezas: Pieza[]): PiezaSummary {
+  const init = (): PiezaSummary['porTipo'][PiezaTipo] => ({ total: 0, aprobadas: 0, enProgreso: 0, pendientes: 0 })
+  const summary: PiezaSummary = {
+    totalPiezas: piezas.length,
+    porTipo: { video: init(), portada: init(), carrousel: init(), historia: init() },
+  }
+  for (const p of piezas) {
+    const bucket = summary.porTipo[p.tipo]
+    bucket.total++
+    const lastArea = PIPELINE_BY_TIPO[p.tipo].at(-1) ?? 'subida'
+    const lastEstado = (p as Record<string, unknown>)[`estado_${lastArea === 'edit' ? 'edicion' : lastArea}`] as string | null
+    const isAprobado = lastEstado === 'APROBADO' || lastEstado === 'PUBLICADO' || lastEstado === 'MÉTRICAS' || lastEstado === 'VOLVER A EMPEZAR' || lastEstado === 'METRICAS Y VOLVER A EMPEZAR'
+    const hasAnyState = PIPELINE_BY_TIPO[p.tipo].some(area => {
+      const col = `estado_${area === 'edit' ? 'edicion' : area}`
+      const v = (p as Record<string, unknown>)[col] as string | null
+      return v && v.length > 0
+    })
+    if (isAprobado) bucket.aprobadas++
+    else if (hasAnyState) bucket.enProgreso++
+    else bucket.pendientes++
+  }
+  return summary
+}
+
+// =================== Recursos del ciclo (links consolidados) ===================
+
+/** Lee los recursos de un cliente para un ciclo dado. Si no existen, devuelve null. */
+export async function queryRecursosCiclo(
+  clienteId: number,
+  cicloMes: string
+): Promise<ClienteCicloRecursos | null> {
+  const { data, error } = await supabase
+    .from('cliente_ciclo_recursos')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .eq('ciclo_mes', cicloMes)
+    .maybeSingle()
+  if (error) {
+    if (error.message?.toLowerCase().includes('does not exist') || error.code === '42P01' || error.code === 'PGRST205') {
+      return null
+    }
+    console.error('[recursos] error:', error)
+    return null
+  }
+  return (data as ClienteCicloRecursos) ?? null
+}
+
+/** Crea o actualiza los recursos de un cliente x ciclo. */
+export async function upsertRecursosCiclo(input: {
+  agenciaId: string
+  clienteId: number
+  cicloMes: string
+  data: Partial<ClienteCicloRecursos>
+}): Promise<{ ok: boolean; error?: string }> {
+  const payload = {
+    agencia_id: input.agenciaId,
+    cliente_id: input.clienteId,
+    ciclo_mes: input.cicloMes,
+    ...input.data,
+    updated_at: new Date().toISOString(),
+  }
+  const { error } = await supabase
+    .from('cliente_ciclo_recursos')
+    .upsert(payload, { onConflict: 'cliente_id,ciclo_mes' })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
+// Mapping de "qué link aplica a qué tipo" para mostrar el link correcto en cada pieza
+export const TIPO_TO_DRIVE_FIELD: Record<PiezaTipo, keyof ClienteCicloRecursos> = {
+  video:     'drive_videos_editados_url',
+  portada:   'drive_portadas_url',
+  carrousel: 'drive_carrouseles_url',
+  historia:  'drive_historias_url',
+}
+
+/** Para una pieza, devuelve el área activa (la primera del pipeline que NO esté aprobada). */
+export function activeAreaOf(pieza: Pieza): UserArea | null {
+  const pipeline = PIPELINE_BY_TIPO[pieza.tipo]
+  for (const area of pipeline) {
+    const col = `estado_${area === 'edit' ? 'edicion' : area}`
+    const v = (pieza as Record<string, unknown>)[col] as string | null
+    const isApproved = v === 'APROBADO' || v === 'PUBLICADO' || v === 'MÉTRICAS' || v === 'VOLVER A EMPEZAR' || v === 'METRICAS Y VOLVER A EMPEZAR' || v === 'MATERIAL APROBADO' || v === 'MATERIAL SUBIDO' || v === 'LISTO PARA GRABAR'
+    if (!isApproved) return area
+  }
+  return null
+}

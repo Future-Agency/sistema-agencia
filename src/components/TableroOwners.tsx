@@ -1,17 +1,38 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { SemaforoIcon } from './ui'
 import type { Cliente, Owner, Equipo } from '@/lib/supabase'
+import { namesMatch, type CurrentUser } from '@/lib/users'
 import OwnerFocoTable from './OwnerFocoTable'
-import OwnerTodoList from './OwnerTodoList'
 
-type Props = { clientes: Cliente[]; owners: Owner[]; equipo: Equipo[]; onSelectCliente: (c: Cliente) => void; onUpdate: () => void }
+type Props = {
+  clientes: Cliente[]
+  owners: Owner[]
+  equipo: Equipo[]
+  onSelectCliente: (c: Cliente) => void
+  onUpdate: () => void
+  currentUser?: CurrentUser
+  agenciaId?: string
+}
 
-export default function TableroOwners({ clientes, owners, equipo, onSelectCliente, onUpdate }: Props) {
+export default function TableroOwners({ clientes, owners, equipo, onSelectCliente, onUpdate, currentUser, agenciaId }: Props) {
   const [selectedOwner, setSelectedOwner] = useState<Owner | null>(null)
 
+  // Si el user logueado NO es admin y matchea con un owner por nombre,
+  // filtrar a sus propias tarjetas. (Pedido del owner: Ramiro / Matias solo ven lo suyo)
+  const isRestrictedToOwn = currentUser && currentUser.role !== 'admin'
+  const myOwnerIds = useMemo(() => {
+    if (!isRestrictedToOwn || !currentUser) return null
+    const ids = owners
+      .filter(o => namesMatch(currentUser.name, o.nombre) || namesMatch(currentUser.name, o.nombre_corto))
+      .map(o => o.id)
+    return new Set(ids)
+  }, [isRestrictedToOwn, currentUser, owners])
+
   const ownerStats = useMemo(() => {
-    return owners.map(o => {
+    let list = owners
+    if (myOwnerIds) list = list.filter(o => myOwnerIds.has(o.id))
+    return list.map(o => {
       const owned = clientes.filter(c => c.owner_id === o.id)
       return {
         ...o, total: owned.length,
@@ -21,9 +42,20 @@ export default function TableroOwners({ clientes, owners, equipo, onSelectClient
         clientes: owned,
       }
     }).filter(o => o.total > 0)
-  }, [clientes, owners])
+  }, [clientes, owners, myOwnerIds])
 
-  const unassigned = useMemo(() => clientes.filter(c => !c.owner_id), [clientes])
+  // Unassigned solo se muestra a admins (los demás no pueden reasignar)
+  const unassigned = useMemo(() => {
+    if (myOwnerIds) return []
+    return clientes.filter(c => !c.owner_id)
+  }, [clientes, myOwnerIds])
+
+  // Si el user es non-admin con un único owner match, auto-abrir su detalle
+  useEffect(() => {
+    if (myOwnerIds && ownerStats.length === 1 && !selectedOwner) {
+      setSelectedOwner(ownerStats[0])
+    }
+  }, [myOwnerIds, ownerStats, selectedOwner])
 
   const ownerClientes = useMemo(() => {
     if (!selectedOwner) return []
@@ -64,10 +96,7 @@ export default function TableroOwners({ clientes, owners, equipo, onSelectClient
         </div>
 
         {/* FOCO Table */}
-        <OwnerFocoTable clientes={ownerClientes} owner={selectedOwner} equipo={equipo} onUpdate={onUpdate} onSelectCliente={onSelectCliente} />
-
-        {/* TO DO List */}
-        <OwnerTodoList owner={selectedOwner} clientes={ownerClientes} />
+        <OwnerFocoTable clientes={ownerClientes} owner={selectedOwner} equipo={equipo} onUpdate={onUpdate} onSelectCliente={onSelectCliente} agenciaId={agenciaId} />
       </div>
     )
   }
