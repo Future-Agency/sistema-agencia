@@ -164,22 +164,31 @@ export default function TableroPipeline({
     return new Set(list.map(c => c.id))
   }, [clientes, area, ownerFilter])
 
-  // Cargar piezas
+  // Cargar piezas — pagina manualmente porque Supabase corta a 1000 filas por query
+  // y la tabla puede tener muchas más (ej: 1820 piezas a mediados del segundo ciclo).
   const loadPiezas = useCallback(async () => {
     setLoading(true)
-    let query = supabase
-      .from('piezas')
-      .select('*')
-      .eq('agencia_id', agenciaId)
-    if (cycleFilter) query = query.eq('ciclo_mes', cycleFilter)
-    const { data, error } = await query
-    if (error) {
-      if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('does not exist')) {
-        setTableMissing(true); setPiezas([]); setLoading(false); return
+    const PAGE = 1000
+    const all: Pieza[] = []
+    for (let page = 0; ; page++) {
+      let query = supabase
+        .from('piezas')
+        .select('*')
+        .eq('agencia_id', agenciaId)
+        .range(page * PAGE, (page + 1) * PAGE - 1)
+      if (cycleFilter) query = query.eq('ciclo_mes', cycleFilter)
+      const { data, error } = await query
+      if (error) {
+        if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('does not exist')) {
+          setTableMissing(true); setPiezas([]); setLoading(false); return
+        }
+        console.error('[TableroPipeline] piezas error:', error); setPiezas([]); setLoading(false); return
       }
-      console.error('[TableroPipeline] piezas error:', error); setPiezas([]); setLoading(false); return
+      const rows = (data ?? []) as Pieza[]
+      all.push(...rows)
+      if (rows.length < PAGE) break
     }
-    setPiezas((data ?? []) as Pieza[])
+    setPiezas(all)
     setLoading(false)
   }, [agenciaId, cycleFilter])
 
