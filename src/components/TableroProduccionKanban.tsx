@@ -118,15 +118,14 @@ export default function TableroProduccionKanban({
     return new Set(list.map(c => c.id))
   }, [clientes, ownerFilter])
 
-  // Cargar piezas + estados manuales
-  const loadAll = async () => {
-    setLoading(true)
+  // Fetch silencioso — no toca loading. Para refreshes por eventos realtime.
+  const fetchAll = async () => {
     const { data, error } = await supabase.from('piezas').select('*').eq('agencia_id', agenciaId)
     if (error) {
       if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('does not exist')) {
-        setTableMissing(true); setPiezas([]); setLoading(false); return
+        setTableMissing(true); setPiezas([]); return
       }
-      console.error('[kanban piezas]', error); setPiezas([]); setLoading(false); return
+      console.error('[kanban piezas]', error); setPiezas([]); return
     }
     setPiezas((data ?? []) as Pieza[])
     const { data: rec } = await supabase
@@ -139,15 +138,21 @@ export default function TableroProduccionKanban({
       if (r.estado_loop) m.set(`${r.cliente_id}::${r.ciclo_mes}`, r.estado_loop as string)
     }
     setEstadosLoop(m)
+  }
+
+  // Carga "ruidosa" — muestra skeleton. Sólo para load inicial / cambio de agencia.
+  const loadAll = async () => {
+    setLoading(true)
+    await fetchAll()
     setLoading(false)
   }
 
   useEffect(() => { loadAll() /* eslint-disable-line */ }, [agenciaId])
 
-  // Realtime: cuando cambia estado-loop en otra pestaña/device, refetch
+  // Realtime: cuando cambia estado-loop en otra pestaña/device, refetch silencioso (no parpadea)
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const handler = () => { loadAll() }
+    const handler = () => { fetchAll() }
     window.addEventListener('estado-loop-changed', handler)
     return () => window.removeEventListener('estado-loop-changed', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
