@@ -139,6 +139,17 @@ export default function TableroPipeline({
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [pendingClose, setPendingClose] = useState<{ batch: LoopBatch; toState: string } | null>(null)
   const [pendingPreflight, setPendingPreflight] = useState<{ batch: LoopBatch; fromState: string; toState: string } | null>(null)
+  const [menuOpenForKey, setMenuOpenForKey] = useState<string | null>(null)
+
+  // Estados de "mandar a corrección/revisión" disponibles para esta área.
+  // Construido a partir de los IDs configurados en AREA_DEFS y deduplicados.
+  const correctionOptions = useMemo(() => {
+    const ids = new Set<number>()
+    if (def.correctionStateId !== undefined) ids.add(def.correctionStateId)
+    if (def.reviewInternalStateId !== undefined) ids.add(def.reviewInternalStateId)
+    if (def.reviewClientStateId !== undefined) ids.add(def.reviewClientStateId)
+    return stateList.filter(s => ids.has(s.id))
+  }, [def, stateList])
 
   const clienteById = useMemo(() => {
     const m = new Map<number, Cliente>()
@@ -662,6 +673,71 @@ export default function TableroPipeline({
                                     <span style={{ fontSize: 10, color: '#6a6a80', fontWeight: 700, minWidth: 36, textAlign: 'right' as const }}>
                                       {batch.aprobadas}/{batch.total}
                                     </span>
+                                    {/* Botón "↺ mandar a corrección/revisión" — atajo para retroceder */}
+                                    {(() => {
+                                      const opciones = correctionOptions.filter(s => s.label !== batch.dominantState)
+                                      if (opciones.length === 0) return null
+                                      const isOpen = menuOpenForKey === batch.key
+                                      return (
+                                        <div style={{ position: 'relative' as const }}>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setMenuOpenForKey(isOpen ? null : batch.key) }}
+                                            title="Mandar a corrección / revisión"
+                                            disabled={isSaving}
+                                            style={{
+                                              background: '#f5365c22', border: '1px solid #f5365c55',
+                                              color: '#f5365c', fontSize: 11, fontWeight: 700,
+                                              padding: '3px 7px', borderRadius: 4,
+                                              cursor: isSaving ? 'wait' : 'pointer',
+                                              opacity: isSaving ? 0.5 : 1,
+                                            }}
+                                          >
+                                            ↺
+                                          </button>
+                                          {isOpen && (
+                                            <>
+                                              <div
+                                                onClick={(e) => { e.stopPropagation(); setMenuOpenForKey(null) }}
+                                                style={{ position: 'fixed' as const, inset: 0, zIndex: 60 }}
+                                              />
+                                              <div style={{
+                                                position: 'absolute' as const, top: '100%', right: 0, marginTop: 4,
+                                                background: '#1a1a28', border: '1px solid #2a2a40',
+                                                borderRadius: 6, padding: 4, minWidth: 180, zIndex: 61,
+                                                boxShadow: '0 4px 16px rgba(0,0,0,.4)',
+                                              }}>
+                                                <div style={{
+                                                  padding: '4px 8px', fontSize: 9, color: '#6a6a80',
+                                                  fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.4,
+                                                }}>Mandar a</div>
+                                                {opciones.map(opt => (
+                                                  <button
+                                                    key={opt.id}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setMenuOpenForKey(null)
+                                                      moveBatchTo(batch, opt.label)
+                                                    }}
+                                                    style={{
+                                                      width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                                                      padding: '6px 8px', borderRadius: 4,
+                                                      background: 'transparent', border: 'none',
+                                                      color: '#e8e8f0', fontSize: 11, fontWeight: 600,
+                                                      cursor: 'pointer', textAlign: 'left' as const,
+                                                    }}
+                                                    onMouseEnter={e => (e.currentTarget.style.background = '#22223a')}
+                                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                  >
+                                                    <span>{opt.icon}</span>
+                                                    <span>{opt.label}</span>
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </>
+                                          )}
+                                        </div>
+                                      )
+                                    })()}
                                     {/* Botón "→ siguiente estado" — alternativa al drag */}
                                     {(() => {
                                       const currentIdx = stateList.findIndex(s => s.label === batch.dominantState)
