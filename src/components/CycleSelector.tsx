@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import type { Cliente } from '@/lib/supabase'
-import { currentCicloMes, cicloMesLabel, listCyclesInUse, type CicloMes } from '@/lib/cycles'
+import { currentCicloMes, cicloMesLabel, listCyclesInUse, prevCicloMes, nextCicloMes, parseCicloMes, type CicloMes } from '@/lib/cycles'
 
 type Props = {
   clientes: Cliente[]
@@ -17,9 +17,15 @@ export default function CycleSelector({ clientes, value, onChange, compact }: Pr
   const cyclesInUse = useMemo(() => listCyclesInUse(clientes), [clientes])
 
   const allOptions = useMemo(() => {
-    const arr = [...cyclesInUse]
-    if (!arr.includes(current)) arr.unshift(current)
-    return arr
+    // Siempre incluir prev/current/next del mes actual además de los ciclos derivados de clientes,
+    // para que el equipo pueda seleccionar el próximo mes aunque ningún cliente tenga ciclo_mes seteado todavía.
+    const set = new Set<CicloMes>([prevCicloMes(current), current, nextCicloMes(current), ...cyclesInUse])
+    return Array.from(set).sort((a, b) => {
+      const pa = parseCicloMes(a)
+      const pb = parseCicloMes(b)
+      if (!pa || !pb) return a.localeCompare(b)
+      return new Date(pa.year, pa.monthIndex).getTime() - new Date(pb.year, pb.monthIndex).getTime()
+    })
   }, [cyclesInUse, current])
 
   const label = value === null ? 'Todos los ciclos' : cicloMesLabel(value)

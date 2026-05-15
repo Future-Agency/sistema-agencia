@@ -502,22 +502,23 @@ export default function Home() {
               <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} />
             </>
           ) : view === 'copys' ? (
-            <TableroPipeline area="copys" agenciaId={agenciaId} currentUser={currentUser} clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} />
+            <TableroPipeline area="copys" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
           ) : view === 'grab' ? (
-            <TableroPipeline area="grab" agenciaId={agenciaId} currentUser={currentUser} clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} />
+            <TableroPipeline area="grab" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
           ) : view === 'grab-calendar' ? (
             <TableroGrabCalendar agenciaId={agenciaId} clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} />
           ) : view === 'subida' ? (
-            <TableroPipeline area="subida" agenciaId={agenciaId} currentUser={currentUser} clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} />
+            <TableroPipeline area="subida" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
           ) : view === 'reporte' ? (
             <TableroPipeline
               area="anuncios"
               agenciaId={agenciaId}
               currentUser={currentUser}
-              clientes={filteredClientes}
+              clientes={clientes}
               owners={owners}
               onSelectCliente={setSelectedCliente}
               ownerFilter={ownerFilter}
+              cycleFilter={cycleFilter}
               titleOverride={{
                 emoji: '📊',
                 title: 'Reportes · Cierre de ciclo',
@@ -565,9 +566,9 @@ export default function Home() {
           ) : view === 'produccion-legacy' ? (
             <TableroProduccion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} ownerFilter={ownerFilter} onOwnerFilterChange={setOwnerFilter} />
           ) : view === 'edicion' ? (
-            <TableroPipeline area="edit" agenciaId={agenciaId} currentUser={currentUser} clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} />
+            <TableroPipeline area="edit" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
           ) : view === 'diseno' ? (
-            <TableroPipeline area="diseno" agenciaId={agenciaId} currentUser={currentUser} clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} />
+            <TableroPipeline area="diseno" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
           ) : view === 'edicion-legacy' ? (
             <TableroEdicion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} />
           ) : view === 'diseno-legacy' ? (

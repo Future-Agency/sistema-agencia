@@ -6,7 +6,7 @@ import { supabase, type Cliente, type Owner, type Pieza, type PiezaTipo } from '
 import type { CurrentUser, UserArea } from '@/lib/users'
 import { AREA_DEFS, type AreaState } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO } from '@/lib/piezas'
-import { cicloMesLabel, parseCicloMes } from '@/lib/cycles'
+import { cicloMesLabel, parseCicloMes, type CicloMes } from '@/lib/cycles'
 import { AREA_CLOSE_CONFIG } from '@/lib/areaClose'
 import { getPreflightGate, missingPreflightFields } from '@/lib/areaPreflightGates'
 import LoopAreaCloseModal from './LoopAreaCloseModal'
@@ -25,6 +25,9 @@ type Props = {
   visibleStateIds?: number[]
   /** Override del título / subtítulo del header (opcional) */
   titleOverride?: { title: string; subtitle?: string; emoji?: string }
+  /** Si se pasa, sólo carga piezas de ese ciclo. Sin esto, la pipeline mostraría
+   *  todos los ciclos a la vez (clientes duplicados si hay piezas en varios meses). */
+  cycleFilter?: CicloMes | null
 }
 
 type LoopBatch = {
@@ -112,7 +115,7 @@ function dominantStateInArea(piezas: Pieza[], area: UserArea, areaStates: AreaSt
 
 export default function TableroPipeline({
   area, agenciaId, currentUser, clientes, owners, onSelectCliente, ownerFilter,
-  visibleStateIds, titleOverride,
+  visibleStateIds, titleOverride, cycleFilter,
 }: Props) {
   const def = AREA_DEFS[area]
   // Lista completa de estados (para lógica de transiciones / dominantState).
@@ -161,22 +164,33 @@ export default function TableroPipeline({
     return new Set(list.map(c => c.id))
   }, [clientes, area, ownerFilter])
 
-  // Cargar piezas
+  // Cargar piezas — pagina manualmente porque Supabase corta a 1000 filas por query
+  // y la tabla puede tener muchas más (ej: 1820 piezas a mediados del segundo ciclo).
   const loadPiezas = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('piezas')
-      .select('*')
-      .eq('agencia_id', agenciaId)
-    if (error) {
-      if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('does not exist')) {
-        setTableMissing(true); setPiezas([]); setLoading(false); return
+    const PAGE = 1000
+    const all: Pieza[] = []
+    for (let page = 0; ; page++) {
+      let query = supabase
+        .from('piezas')
+        .select('*')
+        .eq('agencia_id', agenciaId)
+        .range(page * PAGE, (page + 1) * PAGE - 1)
+      if (cycleFilter) query = query.eq('ciclo_mes', cycleFilter)
+      const { data, error } = await query
+      if (error) {
+        if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('does not exist')) {
+          setTableMissing(true); setPiezas([]); setLoading(false); return
+        }
+        console.error('[TableroPipeline] piezas error:', error); setPiezas([]); setLoading(false); return
       }
-      console.error('[TableroPipeline] piezas error:', error); setPiezas([]); setLoading(false); return
+      const rows = (data ?? []) as Pieza[]
+      all.push(...rows)
+      if (rows.length < PAGE) break
     }
-    setPiezas((data ?? []) as Pieza[])
+    setPiezas(all)
     setLoading(false)
-  }, [agenciaId])
+  }, [agenciaId, cycleFilter])
 
   useEffect(() => { loadPiezas() }, [loadPiezas])
 

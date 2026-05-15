@@ -1,8 +1,57 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { supabase, type Cliente, type EstadoLog } from '@/lib/supabase'
+import { supabase, type Cliente, type EstadoLog, type Pieza, type PiezaTipo } from '@/lib/supabase'
 import { ESTADO_OPTIONS_ONGOING, getEstadoStyle, ESTADO_FASE } from '@/lib/estados'
 import { currentCicloMes, prevCicloMes, nextCicloMes, cicloMesLabel } from '@/lib/cycles'
+import { PIPELINE_BY_TIPO } from '@/lib/piezas'
+import { AREA_DEFS } from '@/lib/areaStates'
+import type { UserArea } from '@/lib/users'
+
+const AREA_ORDER: UserArea[] = ['copys', 'grab', 'edit', 'diseno', 'subida', 'anuncios']
+const APPROVED_VALUES = new Set([
+  'APROBADO', 'APROBADO - SUBIDA A CLICKUP', 'PUBLICADO',
+  'MÉTRICAS', 'METRICAS', 'METRICAS Y VOLVER A EMPEZAR',
+  'MATERIAL APROBADO', 'MATERIAL SUBIDO', 'LISTO PARA GRABAR',
+])
+
+function isApprovedState(v: string | null | undefined): boolean {
+  if (!v) return false
+  return APPROVED_VALUES.has(v.toUpperCase())
+}
+
+function colForArea(area: UserArea): string {
+  return area === 'edit' ? 'estado_edicion' : `estado_${area}`
+}
+
+/**
+ * Fallback para cuando cliente.estado y estado_loop están vacíos: deriva el estado
+ * activo del loop a partir de las piezas — misma lógica que TableroPipeline.
+ * Recorre las áreas en orden y devuelve el dominante de la primera área no terminada.
+ */
+function activeStateFromPiezas(piezas: Pieza[]): string | null {
+  if (piezas.length === 0) return null
+  for (const area of AREA_ORDER) {
+    const inArea = piezas.filter(p => PIPELINE_BY_TIPO[p.tipo as PiezaTipo]?.includes(area))
+    if (inArea.length === 0) continue
+    const col = colForArea(area)
+    const unfinished = inArea.filter(p => !isApprovedState((p as Record<string, unknown>)[col] as string | null))
+    if (unfinished.length === 0) continue // área terminada, seguir
+    const states = AREA_DEFS[area].states
+    const canonical = new Set(states.map(s => s.label))
+    const counts = new Map<string, number>()
+    unfinished.forEach(p => {
+      const v = (((p as Record<string, unknown>)[col] as string) || '').trim()
+      if (!v || !canonical.has(v)) return
+      counts.set(v, (counts.get(v) ?? 0) + 1)
+    })
+    if (counts.size === 0) return states[0].label
+    let max = 0
+    let dominant = states[0].label
+    counts.forEach((c, k) => { if (c > max) { max = c; dominant = k } })
+    return dominant
+  }
+  return null
+}
 
 type Props = {
   cliente: Cliente
@@ -101,6 +150,7 @@ export default function ProcesoTimeline({ cliente }: Props) {
   const primaryCycle = cliente.ciclo_mes || currentCicloMes()
   const [selectedCycle, setSelectedCycle] = useState<string>(primaryCycle)
   const [logs, setLogs] = useState<EstadoLog[]>([])
+  const [piezas, setPiezas] = useState<Pieza[]>([])
   const [loading, setLoading] = useState(true)
   const [estadoLoopForCycle, setEstadoLoopForCycle] = useState<string | null>(null)
 
@@ -116,21 +166,18 @@ export default function ProcesoTimeline({ cliente }: Props) {
   const reload = async () => {
     setLoading(true)
     // Filtro ESTRICTO por ciclo — sin nulls. Los logs viejos sin ciclo_mes no entran.
-    const { data: logsData } = await supabase
-      .from('estado_log')
-      .select('*')
-      .eq('cliente_id', cliente.id)
-      .eq('ciclo_mes', selectedCycle)
-      .order('changed_at', { ascending: true })
+    const [{ data: logsData }, { data: rec }, { data: piezasData }] = await Promise.all([
+      supabase.from('estado_log').select('*')
+        .eq('cliente_id', cliente.id).eq('ciclo_mes', selectedCycle)
+        .order('changed_at', { ascending: true }),
+      supabase.from('cliente_ciclo_recursos').select('estado_loop')
+        .eq('cliente_id', cliente.id).eq('ciclo_mes', selectedCycle).maybeSingle(),
+      supabase.from('piezas').select('*')
+        .eq('cliente_id', cliente.id).eq('ciclo_mes', selectedCycle),
+    ])
     setLogs((logsData ?? []) as EstadoLog[])
-
-    const { data: rec } = await supabase
-      .from('cliente_ciclo_recursos')
-      .select('estado_loop')
-      .eq('cliente_id', cliente.id)
-      .eq('ciclo_mes', selectedCycle)
-      .maybeSingle()
     setEstadoLoopForCycle(rec?.estado_loop ?? null)
+    setPiezas((piezasData ?? []) as Pieza[])
     setLoading(false)
   }
 
@@ -149,9 +196,13 @@ export default function ProcesoTimeline({ cliente }: Props) {
   }, [cliente.id, selectedCycle])
 
   const isPrimaryView = selectedCycle === primaryCycle
+  // Fallback derivado de piezas — para clientes con piezas pero sin movimientos
+  // explícitos en logs/estado_loop, refleja el estado dominante de la pipeline
+  // así el detalle no queda "Sin estado activo" mientras la pipeline lo muestra avanzando.
+  const fallbackFromPiezas = useMemo(() => activeStateFromPiezas(piezas), [piezas])
   const currentEstado = isPrimaryView
-    ? (cliente.estado || estadoLoopForCycle || null)
-    : estadoLoopForCycle
+    ? (cliente.estado || estadoLoopForCycle || fallbackFromPiezas || null)
+    : (estadoLoopForCycle || fallbackFromPiezas)
 
   const cards = useMemo(() => buildCards(logs, currentEstado), [logs, currentEstado])
 
