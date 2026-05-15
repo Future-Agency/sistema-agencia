@@ -89,13 +89,18 @@ if [[ "$NODE_OK" == "false" ]]; then
 fi
 
 # ----- 4. git config básico -----
+# IMPORTANTE: leemos de /dev/tty porque cuando el script se ejecuta vía
+#   curl ... | bash
+# el stdin viene del pipe del curl, no del teclado. Sin </dev/tty los `read` fallan.
 step "4/7 · Git identity"
 if [[ -z "$(git config --global user.name 2>/dev/null)" ]]; then
-  read -p "Tu nombre completo (para git commits): " GIT_NAME
+  printf "Tu nombre completo (para git commits): "
+  read GIT_NAME </dev/tty
   git config --global user.name "$GIT_NAME"
 fi
 if [[ -z "$(git config --global user.email 2>/dev/null)" ]]; then
-  read -p "Tu email de GitHub: " GIT_EMAIL
+  printf "Tu email de GitHub: "
+  read GIT_EMAIL </dev/tty
   git config --global user.email "$GIT_EMAIL"
 fi
 ok "Git: $(git config --global user.name) <$(git config --global user.email)>"
@@ -115,7 +120,7 @@ ok "gh $(gh --version | head -1 | awk '{print $3}')"
 
 if ! gh auth status >/dev/null 2>&1; then
   warn "Necesitás autenticarte con GitHub. Te abre el browser:"
-  gh auth login -h github.com -p https -w
+  gh auth login -h github.com -p https -w </dev/tty
 fi
 ok "GitHub autenticado como $(gh api user --jq .login)"
 
