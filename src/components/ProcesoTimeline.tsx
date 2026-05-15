@@ -163,9 +163,8 @@ export default function ProcesoTimeline({ cliente }: Props) {
     return Array.from(set).sort()
   }, [primaryCycle])
 
-  const reload = async () => {
-    setLoading(true)
-    // Filtro ESTRICTO por ciclo — sin nulls. Los logs viejos sin ciclo_mes no entran.
+  // Fetch silencioso — no toca loading. Para refreshes por eventos realtime.
+  const fetchData = async () => {
     const [{ data: logsData }, { data: rec }, { data: piezasData }] = await Promise.all([
       supabase.from('estado_log').select('*')
         .eq('cliente_id', cliente.id).eq('ciclo_mes', selectedCycle)
@@ -178,6 +177,12 @@ export default function ProcesoTimeline({ cliente }: Props) {
     setLogs((logsData ?? []) as EstadoLog[])
     setEstadoLoopForCycle(rec?.estado_loop ?? null)
     setPiezas((piezasData ?? []) as Pieza[])
+  }
+
+  // Reload "ruidoso" — muestra skeleton. Sólo para load inicial / cambio de cliente / cycle.
+  const reload = async () => {
+    setLoading(true)
+    await fetchData()
     setLoading(false)
   }
 
@@ -185,7 +190,7 @@ export default function ProcesoTimeline({ cliente }: Props) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const handler = () => { reload() }
+    const handler = () => { fetchData() }
     window.addEventListener('estado-loop-changed', handler)
     window.addEventListener('clientes-refresh', handler)
     return () => {

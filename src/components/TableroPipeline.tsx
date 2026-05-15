@@ -176,10 +176,9 @@ export default function TableroPipeline({
     return new Set(list.map(c => c.id))
   }, [clientes, area, ownerFilter])
 
-  // Cargar piezas — pagina manualmente porque Supabase corta a 1000 filas por query
-  // y la tabla puede tener muchas más (ej: 1820 piezas a mediados del segundo ciclo).
-  const loadPiezas = useCallback(async () => {
-    setLoading(true)
+  // Fetch interno — no toca loading. Para refreshes silenciosos por eventos
+  // realtime / cross-tab evitamos el "Cargando..." que parpadea encima del contenido.
+  const fetchPiezas = useCallback(async (): Promise<Pieza[] | null> => {
     const PAGE = 1000
     const all: Pieza[] = []
     for (let page = 0; ; page++) {
@@ -192,31 +191,38 @@ export default function TableroPipeline({
       const { data, error } = await query
       if (error) {
         if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('does not exist')) {
-          setTableMissing(true); setPiezas([]); setLoading(false); return
+          setTableMissing(true); setPiezas([]); return null
         }
-        console.error('[TableroPipeline] piezas error:', error); setPiezas([]); setLoading(false); return
+        console.error('[TableroPipeline] piezas error:', error); setPiezas([]); return null
       }
       const rows = (data ?? []) as Pieza[]
       all.push(...rows)
       if (rows.length < PAGE) break
     }
     setPiezas(all)
-    setLoading(false)
+    return all
   }, [agenciaId, cycleFilter])
+
+  // Carga "ruidosa" — muestra skeleton. Usar para load inicial y cambio de filtro.
+  const loadPiezas = useCallback(async () => {
+    setLoading(true)
+    await fetchPiezas()
+    setLoading(false)
+  }, [fetchPiezas])
 
   useEffect(() => { loadPiezas() }, [loadPiezas])
 
-  // Realtime / cross-tab refresh
+  // Realtime / cross-tab refresh — silencioso, sin tocar loading
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const handler = () => { loadPiezas() }
+    const handler = () => { fetchPiezas() }
     window.addEventListener('estado-loop-changed', handler)
     window.addEventListener('clientes-refresh', handler)
     return () => {
       window.removeEventListener('estado-loop-changed', handler)
       window.removeEventListener('clientes-refresh', handler)
     }
-  }, [loadPiezas])
+  }, [fetchPiezas])
 
   // Limpiar optimistic cuando llega data fresca que matchea
   useEffect(() => {
