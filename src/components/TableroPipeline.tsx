@@ -6,7 +6,7 @@ import { supabase, type Cliente, type Owner, type Pieza, type PiezaTipo } from '
 import type { CurrentUser, UserArea } from '@/lib/users'
 import { AREA_DEFS, type AreaState } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO } from '@/lib/piezas'
-import { cicloMesLabel, parseCicloMes, type CicloMes } from '@/lib/cycles'
+import { cicloMesLabel, parseCicloMes, currentCicloMes, prevCicloMes, nextCicloMes, type CicloMes } from '@/lib/cycles'
 import { AREA_CLOSE_CONFIG } from '@/lib/areaClose'
 import { getPreflightGate, missingPreflightFields } from '@/lib/areaPreflightGates'
 import LoopAreaCloseModal from './LoopAreaCloseModal'
@@ -139,6 +139,18 @@ export default function TableroPipeline({
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [pendingClose, setPendingClose] = useState<{ batch: LoopBatch; toState: string } | null>(null)
   const [pendingPreflight, setPendingPreflight] = useState<{ batch: LoopBatch; fromState: string; toState: string } | null>(null)
+  const [menuOpenForKey, setMenuOpenForKey] = useState<string | null>(null)
+  const [cycleMenuOpenForKey, setCycleMenuOpenForKey] = useState<string | null>(null)
+
+  // Estados de "mandar a corrección/revisión" disponibles para esta área.
+  // Construido a partir de los IDs configurados en AREA_DEFS y deduplicados.
+  const correctionOptions = useMemo(() => {
+    const ids = new Set<number>()
+    if (def.correctionStateId !== undefined) ids.add(def.correctionStateId)
+    if (def.reviewInternalStateId !== undefined) ids.add(def.reviewInternalStateId)
+    if (def.reviewClientStateId !== undefined) ids.add(def.reviewClientStateId)
+    return stateList.filter(s => ids.has(s.id))
+  }, [def, stateList])
 
   const clienteById = useMemo(() => {
     const m = new Map<number, Cliente>()
@@ -475,6 +487,35 @@ export default function TableroPipeline({
     await moveBatchTo(batch, stateList[nextIdx].label)
   }, [stateList, moveBatchTo])
 
+  // Mover todas las piezas del batch a otro ciclo (UPDATE bulk en piezas.ciclo_mes)
+  const moveBatchToCycle = useCallback(async (batch: LoopBatch, targetCycle: CicloMes) => {
+    if (batch.cicloMes === targetCycle) return
+    const ok = window.confirm(
+      `¿Mover el batch de ${batch.cliente.nombre} (${batch.piezas.length} piezas) ` +
+      `del ciclo ${cicloMesLabel(batch.cicloMes)} a ${cicloMesLabel(targetCycle)}?`
+    )
+    if (!ok) return
+    setSavingKey(batch.key)
+    const ids = batch.piezas.map(p => p.id)
+    const { error } = await supabase
+      .from('piezas')
+      .update({ ciclo_mes: targetCycle, updated_at: new Date().toISOString() })
+      .in('id', ids)
+    setSavingKey(null)
+    if (error) {
+      setToast({ msg: `Error: ${error.message}`, type: 'err' })
+      return
+    }
+    setToast({
+      msg: `${batch.cliente.nombre} · ${cicloMesLabel(batch.cicloMes).split(' ')[0]} → ${cicloMesLabel(targetCycle).split(' ')[0]}`,
+      type: 'ok',
+    })
+    await loadPiezas()
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('estado-loop-changed'))
+    }
+  }, [loadPiezas])
+
   const totalBatches = visibleBatches.length
   const aprobadosCount = useMemo(
     () => visibleBatches.filter(b => b.total > 0 && b.aprobadas === b.total).length,
@@ -662,6 +703,138 @@ export default function TableroPipeline({
                                     <span style={{ fontSize: 10, color: '#6a6a80', fontWeight: 700, minWidth: 36, textAlign: 'right' as const }}>
                                       {batch.aprobadas}/{batch.total}
                                     </span>
+                                    {/* Botón "↺ mandar a corrección/revisión" — atajo para retroceder */}
+                                    {(() => {
+                                      const opciones = correctionOptions.filter(s => s.label !== batch.dominantState)
+                                      if (opciones.length === 0) return null
+                                      const isOpen = menuOpenForKey === batch.key
+                                      return (
+                                        <div style={{ position: 'relative' as const }}>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setMenuOpenForKey(isOpen ? null : batch.key) }}
+                                            title="Mandar a corrección / revisión"
+                                            disabled={isSaving}
+                                            style={{
+                                              background: '#f5365c22', border: '1px solid #f5365c55',
+                                              color: '#f5365c', fontSize: 11, fontWeight: 700,
+                                              padding: '3px 7px', borderRadius: 4,
+                                              cursor: isSaving ? 'wait' : 'pointer',
+                                              opacity: isSaving ? 0.5 : 1,
+                                            }}
+                                          >
+                                            ↺
+                                          </button>
+                                          {isOpen && (
+                                            <>
+                                              <div
+                                                onClick={(e) => { e.stopPropagation(); setMenuOpenForKey(null) }}
+                                                style={{ position: 'fixed' as const, inset: 0, zIndex: 60 }}
+                                              />
+                                              <div style={{
+                                                position: 'absolute' as const, top: '100%', right: 0, marginTop: 4,
+                                                background: '#1a1a28', border: '1px solid #2a2a40',
+                                                borderRadius: 6, padding: 4, minWidth: 180, zIndex: 61,
+                                                boxShadow: '0 4px 16px rgba(0,0,0,.4)',
+                                              }}>
+                                                <div style={{
+                                                  padding: '4px 8px', fontSize: 9, color: '#6a6a80',
+                                                  fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.4,
+                                                }}>Mandar a</div>
+                                                {opciones.map(opt => (
+                                                  <button
+                                                    key={opt.id}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setMenuOpenForKey(null)
+                                                      moveBatchTo(batch, opt.label)
+                                                    }}
+                                                    style={{
+                                                      width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                                                      padding: '6px 8px', borderRadius: 4,
+                                                      background: 'transparent', border: 'none',
+                                                      color: '#e8e8f0', fontSize: 11, fontWeight: 600,
+                                                      cursor: 'pointer', textAlign: 'left' as const,
+                                                    }}
+                                                    onMouseEnter={e => (e.currentTarget.style.background = '#22223a')}
+                                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                  >
+                                                    <span>{opt.icon}</span>
+                                                    <span>{opt.label}</span>
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </>
+                                          )}
+                                        </div>
+                                      )
+                                    })()}
+                                    {/* Botón "📅 mover a otro ciclo" */}
+                                    {(() => {
+                                      const cur = currentCicloMes()
+                                      const opciones = [prevCicloMes(cur), cur, nextCicloMes(cur)]
+                                        .filter((c, i, arr) => arr.indexOf(c) === i && c !== batch.cicloMes)
+                                      if (opciones.length === 0) return null
+                                      const isOpen = cycleMenuOpenForKey === batch.key
+                                      return (
+                                        <div style={{ position: 'relative' as const }}>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setCycleMenuOpenForKey(isOpen ? null : batch.key) }}
+                                            title="Mover el loop a otro ciclo"
+                                            disabled={isSaving}
+                                            style={{
+                                              background: '#a78bfa22', border: '1px solid #a78bfa55',
+                                              color: '#a78bfa', fontSize: 11, fontWeight: 700,
+                                              padding: '3px 7px', borderRadius: 4,
+                                              cursor: isSaving ? 'wait' : 'pointer',
+                                              opacity: isSaving ? 0.5 : 1,
+                                            }}
+                                          >
+                                            📅
+                                          </button>
+                                          {isOpen && (
+                                            <>
+                                              <div
+                                                onClick={(e) => { e.stopPropagation(); setCycleMenuOpenForKey(null) }}
+                                                style={{ position: 'fixed' as const, inset: 0, zIndex: 60 }}
+                                              />
+                                              <div style={{
+                                                position: 'absolute' as const, top: '100%', right: 0, marginTop: 4,
+                                                background: '#1a1a28', border: '1px solid #2a2a40',
+                                                borderRadius: 6, padding: 4, minWidth: 160, zIndex: 61,
+                                                boxShadow: '0 4px 16px rgba(0,0,0,.4)',
+                                              }}>
+                                                <div style={{
+                                                  padding: '4px 8px', fontSize: 9, color: '#6a6a80',
+                                                  fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: 0.4,
+                                                }}>Mover a ciclo</div>
+                                                {opciones.map(c => (
+                                                  <button
+                                                    key={c}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setCycleMenuOpenForKey(null)
+                                                      moveBatchToCycle(batch, c)
+                                                    }}
+                                                    style={{
+                                                      width: '100%', display: 'flex', alignItems: 'center',
+                                                      padding: '6px 8px', borderRadius: 4,
+                                                      background: 'transparent', border: 'none',
+                                                      color: '#e8e8f0', fontSize: 11, fontWeight: 600,
+                                                      cursor: 'pointer', textAlign: 'left' as const,
+                                                      textTransform: 'capitalize' as const,
+                                                    }}
+                                                    onMouseEnter={e => (e.currentTarget.style.background = '#22223a')}
+                                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                  >
+                                                    {cicloMesLabel(c)}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </>
+                                          )}
+                                        </div>
+                                      )
+                                    })()}
                                     {/* Botón "→ siguiente estado" — alternativa al drag */}
                                     {(() => {
                                       const currentIdx = stateList.findIndex(s => s.label === batch.dominantState)
