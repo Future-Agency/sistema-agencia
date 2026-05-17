@@ -171,6 +171,38 @@ export function summarizePiezas(piezas: Pieza[]): PiezaSummary {
   return summary
 }
 
+// =================== Estado del loop / batch ===================
+
+/** Una pieza está "terminada" si su última área del pipeline está aprobada
+ *  (PUBLICADO, MÉTRICAS, APROBADO, VOLVER A EMPEZAR — según el área final del tipo). */
+export function isPiezaTerminada(p: Pieza): boolean {
+  const lastArea = PIPELINE_BY_TIPO[p.tipo].at(-1) ?? 'subida'
+  const col = `estado_${lastArea === 'edit' ? 'edicion' : lastArea}`
+  const v = (p as Record<string, unknown>)[col] as string | null
+  if (!v) return false
+  const u = v.toUpperCase()
+  return u === 'APROBADO' || u === 'APROBADO - SUBIDA A CLICKUP' ||
+    u === 'PUBLICADO' || u === 'MÉTRICAS' || u === 'METRICAS' ||
+    u === 'VOLVER A EMPEZAR' || u === 'METRICAS Y VOLVER A EMPEZAR'
+}
+
+/** Loop (cliente × ciclo) está completado si tiene piezas y TODAS están terminadas. */
+export function loopEstaCompletado(piezasDelLoop: Pieza[]): boolean {
+  if (piezasDelLoop.length === 0) return false
+  return piezasDelLoop.every(isPiezaTerminada)
+}
+
+/** Agrupa piezas por `${cliente_id}::${ciclo_mes}` para chequeos rápidos por loop. */
+export function indexPiezasByLoop(piezas: Pieza[]): Map<string, Pieza[]> {
+  const m = new Map<string, Pieza[]>()
+  for (const p of piezas) {
+    const k = `${p.cliente_id}::${p.ciclo_mes}`
+    if (!m.has(k)) m.set(k, [])
+    m.get(k)!.push(p)
+  }
+  return m
+}
+
 // =================== Recursos del ciclo (links consolidados) ===================
 
 /** Lee los recursos de un cliente para un ciclo dado. Si no existen, devuelve null. */

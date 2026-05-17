@@ -1,11 +1,17 @@
 'use client'
 import { useMemo } from 'react'
-import type { Cliente } from '@/lib/supabase'
+import type { Cliente, Pieza } from '@/lib/supabase'
+import { loopEstaCompletado } from '@/lib/piezas'
 
 type Props = {
   clientes: Cliente[]
   /** Mes calendario actual (YYYY-MM). v2 usaremos ciclo_mes de la tabla. */
   cycleLabel?: string
+  /** Índice piezas por `${cliente_id}::${ciclo_mes}` — para calcular "completaron"
+   *  desde las piezas en vez de depender de cliente.estado. */
+  piezasByLoop?: Map<string, Pieza[]>
+  /** Ciclo activo (el del CycleSelector). Necesario para mirar el subset de piezas. */
+  cicloActual?: string
 }
 
 // Estados que indican "deployment / cierre de ciclo"
@@ -32,18 +38,30 @@ function defaultCycleLabel(): string {
   return MONTH_LABELS_ES[d.getMonth()]
 }
 
-export default function CycleHeader({ clientes, cycleLabel }: Props) {
+export default function CycleHeader({ clientes, cycleLabel, piezasByLoop, cicloActual }: Props) {
   const label = cycleLabel ?? defaultCycleLabel()
 
   const stats = useMemo(() => {
     const total = clientes.length
-    const completaron = clientes.filter(c => c.estado === ESTADO_CIERRE || c.estado === ESTADO_CIERRE_LEGACY).length
+    // Completaron: si hay info de piezas para este ciclo, contar los clientes con TODAS sus piezas
+    // del ciclo en estado terminal. Sino, fallback al criterio legacy (cliente.estado).
+    let completaron: number
+    if (piezasByLoop && cicloActual) {
+      completaron = clientes.filter(c => {
+        const piezas = piezasByLoop.get(`${c.id}::${cicloActual}`) ?? []
+        if (piezas.length > 0) return loopEstaCompletado(piezas)
+        // Sin piezas en este ciclo → caer al criterio legacy
+        return c.estado === ESTADO_CIERRE || c.estado === ESTADO_CIERRE_LEGACY
+      }).length
+    } else {
+      completaron = clientes.filter(c => c.estado === ESTADO_CIERRE || c.estado === ESTADO_CIERRE_LEGACY).length
+    }
     const enDeployment = clientes.filter(c => ESTADOS_DEPLOYMENT.has(c.estado)).length
     const enProduccion = total - enDeployment
     const pct = total > 0 ? Math.round((completaron / total) * 100) : 0
     const onboarding = clientes.filter(c => c.is_onboarding).length
     return { total, completaron, enProduccion, enDeployment, pct, onboarding }
-  }, [clientes])
+  }, [clientes, piezasByLoop, cicloActual])
 
   return (
     <div style={{
