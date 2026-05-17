@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza } from '@/lib/supabase'
+import { indexPiezasByLoop, loopEstaCompletado } from '@/lib/piezas'
 import { Loading, Toast } from '@/components/ui'
 import ConfirmNuevoCicloModal from '@/components/ConfirmNuevoCicloModal'
 import TableroGeneral from '@/components/TableroGeneral'
@@ -48,6 +49,7 @@ export default function Home() {
   const [owners, setOwners] = useState<Owner[]>([])
   const [equipo, setEquipo] = useState<Equipo[]>([])
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([])
+  const [piezasAgencia, setPiezasAgencia] = useState<Pieza[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [ownerFilter, setOwnerFilter] = useState('')
@@ -121,6 +123,54 @@ export default function Home() {
   useEffect(() => {
     if (currentUser) loadData()
   }, [loadData, currentUser])
+
+  // Carga global de piezas (toda la agencia, paginado por el límite de 1000 de Supabase).
+  // Se usa para: derivar "clientes con piezas en X ciclo" y "loops completados".
+  const loadPiezasAgencia = useCallback(async () => {
+    const PAGE = 1000
+    const all: Pieza[] = []
+    for (let page = 0; ; page++) {
+      const { data, error } = await supabase
+        .from('piezas')
+        .select('*')
+        .eq('agencia_id', agenciaId)
+        .range(page * PAGE, (page + 1) * PAGE - 1)
+      if (error) { console.warn('[loadPiezasAgencia]', error); break }
+      const rows = (data ?? []) as Pieza[]
+      all.push(...rows)
+      if (rows.length < PAGE) break
+    }
+    setPiezasAgencia(all)
+  }, [agenciaId])
+
+  useEffect(() => {
+    if (currentUser && agenciaId) loadPiezasAgencia()
+  }, [currentUser, agenciaId, loadPiezasAgencia])
+
+  // Listener: refrescar piezas cuando hay cambios cross-tab / realtime (silencioso)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => { loadPiezasAgencia() }
+    window.addEventListener('estado-loop-changed', handler)
+    window.addEventListener('clientes-refresh', handler)
+    return () => {
+      window.removeEventListener('estado-loop-changed', handler)
+      window.removeEventListener('clientes-refresh', handler)
+    }
+  }, [loadPiezasAgencia])
+
+  // Índice piezas por loop (cliente × ciclo) para chequeos rápidos
+  const piezasByLoop = useMemo(() => indexPiezasByLoop(piezasAgencia), [piezasAgencia])
+
+  // Set de cliente_id que tienen piezas en cada ciclo_mes
+  const clientesConPiezasEnCiclo = useMemo(() => {
+    const m = new Map<string, Set<number>>()
+    for (const p of piezasAgencia) {
+      if (!m.has(p.ciclo_mes)) m.set(p.ciclo_mes, new Set())
+      m.get(p.ciclo_mes)!.add(p.cliente_id)
+    }
+    return m
+  }, [piezasAgencia])
 
   // Modal de confirmación pesada antes de mover masivamente todos los clientes al ciclo siguiente.
   const [showNuevoCicloModal, setShowNuevoCicloModal] = useState(false)
@@ -226,10 +276,16 @@ export default function Home() {
   const filteredClientes = useMemo(() => {
     let list = clientes
     if (!showStandby) list = list.filter(c => !c.standby)
-    if (cycleFilter !== null) list = list.filter(c => comparteCiclo(c, cycleFilter))
+    if (cycleFilter !== null) {
+      // Un cliente "pertenece al ciclo X" si:
+      //   - su cliente.ciclo_mes matchea X (legacy), O
+      //   - tiene piezas con ciclo_mes=X (derivado de piezas — fix para que junio aparezca)
+      const idsConPiezas = clientesConPiezasEnCiclo.get(cycleFilter) ?? new Set<number>()
+      list = list.filter(c => comparteCiclo(c, cycleFilter) || idsConPiezas.has(c.id))
+    }
     if (search) list = list.filter(c => c.nombre.toLowerCase().includes(search.toLowerCase()))
     return list
-  }, [clientes, search, showStandby, cycleFilter])
+  }, [clientes, search, showStandby, cycleFilter, clientesConPiezasEnCiclo])
 
   const standbyCount = useMemo(() => clientes.filter(c => c.standby).length, [clientes])
 
@@ -498,7 +554,7 @@ export default function Home() {
           ) : view === 'general' ? (
             <>
               <UrgentesBar clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} />
-              <CycleHeader clientes={filteredClientes} cycleLabel={cicloMesLabel(cycleFilter ?? currentCicloMes()).split(' ')[0]} />
+              <CycleHeader clientes={filteredClientes} piezasByLoop={piezasByLoop} cicloActual={cycleFilter ?? currentCicloMes()} cycleLabel={cicloMesLabel(cycleFilter ?? currentCicloMes()).split(' ')[0]} />
               <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} />
             </>
           ) : view === 'copys' ? (
