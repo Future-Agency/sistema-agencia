@@ -51,11 +51,16 @@ function colNameFor(area: UserArea): keyof Pieza {
 function isApprovedValue(v: string | null | undefined): boolean {
   if (!v) return false
   const u = v.toUpperCase()
+  // ⚠ NOTA: 'MÉTRICAS' fue removido. En el flujo nuevo de Copys, MÉTRICAS es
+  // el PRIMER estado de trabajo (no el final) — incluirlo acá hacía que las
+  // piezas en métricas desaparecieran de la pipeline.
+  // 'METRICAS Y VOLVER A EMPEZAR' sí es terminal (cierre del ciclo legacy).
   return u === 'APROBADO' ||
     u === 'APROBADO - SUBIDA A CLICKUP' ||
     u === 'PUBLICADO' ||
-    u === 'MÉTRICAS' || u === 'METRICAS' ||
     u === 'METRICAS Y VOLVER A EMPEZAR' ||
+    u === 'MÉTRICAS Y VOLVER A EMPEZAR' ||
+    u === 'VOLVER A EMPEZAR' ||
     u === 'MATERIAL APROBADO' || u === 'MATERIAL SUBIDO' ||
     u === 'LISTO PARA GRABAR'
 }

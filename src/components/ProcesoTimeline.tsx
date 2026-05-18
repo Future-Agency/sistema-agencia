@@ -8,9 +8,12 @@ import { AREA_DEFS } from '@/lib/areaStates'
 import type { UserArea } from '@/lib/users'
 
 const AREA_ORDER: UserArea[] = ['copys', 'grab', 'edit', 'diseno', 'subida', 'anuncios']
+// ⚠ NO incluir 'MÉTRICAS' solo: es el primer estado de trabajo de Copys
+// en el flujo nuevo, no un cierre. Sí 'METRICAS Y VOLVER A EMPEZAR' (cierre legacy).
 const APPROVED_VALUES = new Set([
   'APROBADO', 'APROBADO - SUBIDA A CLICKUP', 'PUBLICADO',
-  'MÉTRICAS', 'METRICAS', 'METRICAS Y VOLVER A EMPEZAR',
+  'METRICAS Y VOLVER A EMPEZAR', 'MÉTRICAS Y VOLVER A EMPEZAR',
+  'VOLVER A EMPEZAR',
   'MATERIAL APROBADO', 'MATERIAL SUBIDO', 'LISTO PARA GRABAR',
 ])
 

@@ -158,7 +158,7 @@ export function summarizePiezas(piezas: Pieza[]): PiezaSummary {
     bucket.total++
     const lastArea = PIPELINE_BY_TIPO[p.tipo].at(-1) ?? 'subida'
     const lastEstado = (p as Record<string, unknown>)[`estado_${lastArea === 'edit' ? 'edicion' : lastArea}`] as string | null
-    const isAprobado = lastEstado === 'APROBADO' || lastEstado === 'PUBLICADO' || lastEstado === 'MÉTRICAS' || lastEstado === 'VOLVER A EMPEZAR' || lastEstado === 'METRICAS Y VOLVER A EMPEZAR'
+    const isAprobado = lastEstado === 'APROBADO' || lastEstado === 'PUBLICADO' || lastEstado === 'VOLVER A EMPEZAR' || lastEstado === 'METRICAS Y VOLVER A EMPEZAR' || lastEstado === 'MÉTRICAS Y VOLVER A EMPEZAR'
     const hasAnyState = PIPELINE_BY_TIPO[p.tipo].some(area => {
       const col = `estado_${area === 'edit' ? 'edicion' : area}`
       const v = (p as Record<string, unknown>)[col] as string | null
@@ -173,8 +173,9 @@ export function summarizePiezas(piezas: Pieza[]): PiezaSummary {
 
 // =================== Estado del loop / batch ===================
 
-/** Una pieza está "terminada" si su última área del pipeline está aprobada
- *  (PUBLICADO, MÉTRICAS, APROBADO, VOLVER A EMPEZAR — según el área final del tipo). */
+/** Una pieza está "terminada" si su última área del pipeline está aprobada.
+ *  ⚠ NO incluir 'MÉTRICAS' solo: es el inicio del flujo de Copys, no el final.
+ *  Sí 'METRICAS Y VOLVER A EMPEZAR' (cierre completo) y 'VOLVER A EMPEZAR'. */
 export function isPiezaTerminada(p: Pieza): boolean {
   const lastArea = PIPELINE_BY_TIPO[p.tipo].at(-1) ?? 'subida'
   const col = `estado_${lastArea === 'edit' ? 'edicion' : lastArea}`
@@ -182,8 +183,8 @@ export function isPiezaTerminada(p: Pieza): boolean {
   if (!v) return false
   const u = v.toUpperCase()
   return u === 'APROBADO' || u === 'APROBADO - SUBIDA A CLICKUP' ||
-    u === 'PUBLICADO' || u === 'MÉTRICAS' || u === 'METRICAS' ||
-    u === 'VOLVER A EMPEZAR' || u === 'METRICAS Y VOLVER A EMPEZAR'
+    u === 'PUBLICADO' ||
+    u === 'VOLVER A EMPEZAR' || u === 'METRICAS Y VOLVER A EMPEZAR' || u === 'MÉTRICAS Y VOLVER A EMPEZAR'
 }
 
 /** Loop (cliente × ciclo) está completado si tiene piezas y TODAS están terminadas. */
@@ -261,7 +262,7 @@ export function activeAreaOf(pieza: Pieza): UserArea | null {
   for (const area of pipeline) {
     const col = `estado_${area === 'edit' ? 'edicion' : area}`
     const v = (pieza as Record<string, unknown>)[col] as string | null
-    const isApproved = v === 'APROBADO' || v === 'PUBLICADO' || v === 'MÉTRICAS' || v === 'VOLVER A EMPEZAR' || v === 'METRICAS Y VOLVER A EMPEZAR' || v === 'MATERIAL APROBADO' || v === 'MATERIAL SUBIDO' || v === 'LISTO PARA GRABAR'
+    const isApproved = v === 'APROBADO' || v === 'PUBLICADO' || v === 'VOLVER A EMPEZAR' || v === 'METRICAS Y VOLVER A EMPEZAR' || v === 'MÉTRICAS Y VOLVER A EMPEZAR' || v === 'MATERIAL APROBADO' || v === 'MATERIAL SUBIDO' || v === 'LISTO PARA GRABAR'
     if (!isApproved) return area
   }
   return null
