@@ -41,7 +41,15 @@ type LoopBatch = {
   dominantState: string      // estado donde colocar el card
   aprobadas: number
   total: number
+  /** Otras áreas donde el mismo loop (cliente×ciclo) tiene piezas activas en este momento.
+   *  Para mostrar el badge "🔗 también en X" y evitar la confusión de "cliente duplicado". */
+  otherActiveAreas: UserArea[]
 }
+
+const AREA_LABEL: Record<UserArea, string> = {
+  copys: 'Copys', grab: 'Grab', edit: 'Edición', diseno: 'Diseño', subida: 'Subida', anuncios: 'Anuncios',
+}
+const ALL_AREAS_FOR_PARALLEL: UserArea[] = ['copys', 'grab', 'edit', 'diseno', 'subida', 'anuncios']
 
 function colNameFor(area: UserArea): keyof Pieza {
   if (area === 'edit') return 'estado_edicion'
@@ -280,6 +288,22 @@ export default function TableroPipeline({
     return s
   }, [piezas])
 
+  // Map<loopKey, Set<UserArea>>: en qué áreas tiene piezas activas el loop (cliente×ciclo).
+  // Se usa para mostrar el badge "🔗 también en X" en cada card y evitar confusión
+  // de "cliente duplicado" cuando son flujos paralelos por tipo de pieza.
+  const activeAreasByLoop = useMemo(() => {
+    const m = new Map<string, Set<UserArea>>()
+    for (const p of piezas) {
+      const k = `${p.cliente_id}::${p.ciclo_mes}`
+      for (const a of ALL_AREAS_FOR_PARALLEL) {
+        if (!piezaIsCurrentlyInArea(p, a)) continue
+        if (!m.has(k)) m.set(k, new Set())
+        m.get(k)!.add(a)
+      }
+    }
+    return m
+  }, [piezas])
+
   // Construir batches: filtra piezas que aplican a este area Y que realmente
   // ya llegaron al área (no las que están en áreas previas).
   const batches = useMemo<LoopBatch[]>(() => {
@@ -301,7 +325,9 @@ export default function TableroPipeline({
       if (!b) {
         const cliente = clienteById.get(p.cliente_id)
         if (!cliente) continue
-        b = { key, cliente, cicloMes: p.ciclo_mes, piezas: [], dominantState: '', aprobadas: 0, total: 0 }
+        const others = Array.from(activeAreasByLoop.get(key) ?? new Set<UserArea>())
+          .filter(a => a !== area)
+        b = { key, cliente, cicloMes: p.ciclo_mes, piezas: [], dominantState: '', aprobadas: 0, total: 0, otherActiveAreas: others }
         map.set(key, b)
       }
       b.piezas.push(p)
@@ -323,7 +349,7 @@ export default function TableroPipeline({
       if (ord !== 0) return ord
       return b.cicloMes.localeCompare(a.cicloMes)
     })
-  }, [piezas, visibleClienteIds, clienteById, area, colKey, stateList, optimistic, hasVideosInLoop, videosEditedByLoop])
+  }, [piezas, visibleClienteIds, clienteById, area, colKey, stateList, optimistic, hasVideosInLoop, videosEditedByLoop, activeAreasByLoop])
 
   const byState = useMemo(() => {
     const result: Record<string, LoopBatch[]> = {}
@@ -773,6 +799,22 @@ export default function TableroPipeline({
                                   >
                                     {batch.cliente.nombre}
                                   </div>
+
+                                  {/* Badge "🔗 también en X" — el mismo loop tiene piezas activas en otras áreas (flujo paralelo) */}
+                                  {batch.otherActiveAreas.length > 0 && (
+                                    <div
+                                      title={`Este cliente también tiene piezas activas en: ${batch.otherActiveAreas.map(a => AREA_LABEL[a]).join(', ')}. No es duplicado — son flujos paralelos por tipo de pieza.`}
+                                      style={{
+                                        fontSize: 9, color: '#a78bfa',
+                                        background: 'rgba(167,139,250,.10)',
+                                        border: '1px solid rgba(167,139,250,.25)',
+                                        borderRadius: 3, padding: '2px 5px',
+                                        marginBottom: 4, display: 'inline-block',
+                                        textTransform: 'uppercase' as const, letterSpacing: 0.3, fontWeight: 600,
+                                      }}>
+                                      🔗 también en {batch.otherActiveAreas.map(a => AREA_LABEL[a]).join(', ')}
+                                    </div>
+                                  )}
 
                                   {/* Owner */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
