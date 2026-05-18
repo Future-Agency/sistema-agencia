@@ -12,6 +12,8 @@ import { getPreflightGate, missingPreflightFields } from '@/lib/areaPreflightGat
 import LoopAreaCloseModal from './LoopAreaCloseModal'
 import LoopAreaPreflightModal from './LoopAreaPreflightModal'
 import LoopPendienteInfoModal from './LoopPendienteInfoModal'
+import PipelineNotasPanel from './PipelineNotasPanel'
+import type { PipelineNotaArea } from '@/lib/supabase'
 
 type Props = {
   area: UserArea
@@ -143,6 +145,7 @@ export default function TableroPipeline({
   const [pendingPendienteInfo, setPendingPendienteInfo] = useState<{ batch: LoopBatch; toState: string } | null>(null)
   const [menuOpenForKey, setMenuOpenForKey] = useState<string | null>(null)
   const [cycleMenuOpenForKey, setCycleMenuOpenForKey] = useState<string | null>(null)
+  const [showNotas, setShowNotas] = useState(false)
 
   // Estados de "mandar a corrección/revisión" disponibles para esta área.
   // Construido a partir de los IDs configurados en AREA_DEFS y deduplicados.
@@ -620,8 +623,27 @@ export default function TableroPipeline({
           <strong style={{ fontSize: 18, color: '#a0a0b8' }}>{totalBatches}</strong>
           <span style={{ fontSize: 10, color: '#6a6a80', textTransform: 'uppercase' as const, letterSpacing: 0.4, fontWeight: 600 }}>Aprobados</span>
           <strong style={{ fontSize: 18, color: '#00d97e' }}>{aprobadosCount}</strong>
+          <button
+            onClick={() => setShowNotas(true)}
+            title="Notas / fallas / correcciones de este ciclo"
+            style={{
+              padding: '6px 10px', borderRadius: 6,
+              background: '#1a1a28', border: '1px solid #2a2a40',
+              color: '#a0a0b8', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            }}
+          >📒 Notas</button>
         </div>
       </div>
+
+      {showNotas && (
+        <PipelineNotasPanel
+          agenciaId={agenciaId}
+          area={area as PipelineNotaArea}
+          cicloMes={cycleFilter ?? currentCicloMes()}
+          currentUser={currentUser}
+          onClose={() => setShowNotas(false)}
+        />
+      )}
 
       {tableMissing && (
         <div style={{

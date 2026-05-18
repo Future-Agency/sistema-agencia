@@ -647,6 +647,22 @@ export type PedidoCliente = {
   updated_at: string
 }
 
+// B8: Notas / fallas / correcciones / mejoras por pipeline (alimentan el reporte de cierre)
+export type PipelineNotaTipo = 'nota' | 'falla' | 'correccion' | 'mejora'
+export type PipelineNotaArea = 'copys' | 'grab' | 'edit' | 'diseno' | 'subida' | 'anuncios' | 'general'
+export type PipelineNota = {
+  id: number
+  agencia_id: string
+  area: PipelineNotaArea
+  cliente_id: number | null
+  ciclo_mes: string
+  tipo: PipelineNotaTipo
+  texto: string
+  autor: string | null
+  created_at: string
+  updated_at: string
+}
+
 // B3: Sistema de deudas de contenido
 export type DeudaContenidoEstado = 'pendiente' | 'saldada' | 'cancelada'
 export type DeudaContenidoOrigen = 'manual' | 'auto_subida'

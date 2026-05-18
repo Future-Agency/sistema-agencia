@@ -390,7 +390,12 @@ export default function Home() {
           <div className="nav-label" style={{ marginTop: 12 }}>Acciones</div>
           <div className="nav-item" onClick={() => setTvMode(true)}><i className="fas fa-tv" />{!sidebarCollapsed && <span>Modo TV</span>}</div>
           {(currentUser.role === 'admin' || currentUser.role === 'semi-admin') && (
-            <div className="nav-item" onClick={() => setShowNewModal(true)}><i className="fas fa-plus-circle" />{!sidebarCollapsed && <span>Nuevo Cliente</span>}</div>
+            <>
+              <div className="nav-item" onClick={() => window.open(`/reporte/${encodeURIComponent(cycleFilter ?? currentCicloMes())}`, '_blank')}>
+                <i className="fas fa-file-pdf" />{!sidebarCollapsed && <span>Reporte de cierre</span>}
+              </div>
+              <div className="nav-item" onClick={() => setShowNewModal(true)}><i className="fas fa-plus-circle" />{!sidebarCollapsed && <span>Nuevo Cliente</span>}</div>
+            </>
           )}
           {currentUser.role === 'admin' && (
             <div className="nav-item" onClick={() => setShowEquipoModal(true)}><i className="fas fa-user-plus" />{!sidebarCollapsed && <span>Gestionar Equipo</span>}</div>
