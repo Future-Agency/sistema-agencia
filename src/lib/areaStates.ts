@@ -38,24 +38,41 @@ export type AreaDef = {
 }
 
 // ============== COPYS ==============
-// REGULAR_STATES (5)
+// REGULAR_STATES (6)
 const COPYS_REGULAR: AreaState[] = [
-  { id: 0, label: 'MÉTRICAS',           short: 'MÉT',    icon: '📊', isGate: true },
-  { id: 1, label: 'POR HACER SCRIPTS',  short: 'SCRIPT', icon: '✍️' },
-  { id: 2, label: 'CORRECCIÓN FRAN',    short: 'C.FRAN', icon: '🔍' },
-  { id: 3, label: 'CORRECCIÓN CLIENTE', short: 'C.CLI',  icon: '👁' },
-  { id: 4, label: 'LISTO PARA GRABAR',  short: 'LISTO',  icon: '🎬' },
+  { id: 0, label: 'PENDIENTE DE INFORMACIÓN', short: 'PEND.INFO', icon: '⏸️', isGate: true, color: '#f5a623' },
+  { id: 1, label: 'MÉTRICAS',           short: 'MÉT',    icon: '📊', isGate: true },
+  { id: 2, label: 'POR HACER SCRIPTS',  short: 'SCRIPT', icon: '✍️' },
+  { id: 3, label: 'CORRECCIÓN FRAN',    short: 'C.FRAN', icon: '🔍' },
+  { id: 4, label: 'CORRECCIÓN CLIENTE', short: 'C.CLI',  icon: '👁' },
+  { id: 5, label: 'LISTO PARA GRABAR',  short: 'LISTO',  icon: '🎬' },
 ]
 
 const COPYS_ONBOARDING: AreaState[] = [
-  { id: 0, label: 'INVESTIGACIÓN',      icon: '🔬' },
-  { id: 1, label: 'ESTRATEGIA',         icon: '🧠' },
-  { id: 2, label: 'MÉTRICAS',           icon: '📊' },
-  { id: 3, label: 'POR HACER SCRIPTS',  icon: '✍️' },
-  { id: 4, label: 'CORRECCIÓN FRAN',    icon: '🔍' },
-  { id: 5, label: 'CORRECCIÓN CLIENTE', icon: '👁' },
-  { id: 6, label: 'LISTO PARA GRABAR',  icon: '🎬' },
+  { id: 0, label: 'PENDIENTE DE INFORMACIÓN', icon: '⏸️', color: '#f5a623' },
+  { id: 1, label: 'INVESTIGACIÓN',      icon: '🔬' },
+  { id: 2, label: 'ESTRATEGIA',         icon: '🧠' },
+  { id: 3, label: 'MÉTRICAS',           icon: '📊' },
+  { id: 4, label: 'POR HACER SCRIPTS',  icon: '✍️' },
+  { id: 5, label: 'CORRECCIÓN FRAN',    icon: '🔍' },
+  { id: 6, label: 'CORRECCIÓN CLIENTE', icon: '👁' },
+  { id: 7, label: 'LISTO PARA GRABAR',  icon: '🎬' },
 ]
+
+// Motivos canónicos del estado PENDIENTE DE INFORMACIÓN.
+// Si se selecciona OTRO, el modal pide un texto libre en pendiente_info_otro.
+export const MOTIVOS_PENDIENTE_INFO = [
+  { value: 'ESPERANDO_OFERTA',    label: 'Esperando info de oferta' },
+  { value: 'EXCEL_PRODUCTOS',     label: 'Excel de productos' },
+  { value: 'PRECIOS',             label: 'Precios' },
+  { value: 'STOCK',               label: 'Stock' },
+  { value: 'LLAMADA',             label: 'Llamada con cliente' },
+  { value: 'INFORMACION_EVENTO',  label: 'Información de evento' },
+  { value: 'OTRO',                label: 'Otro (especificar)' },
+] as const
+
+export type MotivoPendiente = typeof MOTIVOS_PENDIENTE_INFO[number]['value']
+export const ESTADO_PENDIENTE_INFO_LABEL = 'PENDIENTE DE INFORMACIÓN'
 
 // ============== GRAB ==============
 const GRAB_STATES: AreaState[] = [
@@ -115,10 +132,10 @@ export const AREA_DEFS: Record<UserArea, AreaDef> = {
     primaryColor: '#5e72e4',
     states: COPYS_REGULAR,
     onboardingStates: COPYS_ONBOARDING,
-    correctionStateId: 2, // CORRECCIÓN FRAN
-    reviewInternalStateId: 2, // CORRECCIÓN FRAN actúa como gate
-    reviewClientStateId: 3, // CORRECCIÓN CLIENTE
-    approvedStateId: 4,
+    correctionStateId: 3, // CORRECCIÓN FRAN (shifted +1 por el nuevo PENDIENTE DE INFORMACIÓN)
+    reviewInternalStateId: 3, // CORRECCIÓN FRAN actúa como gate
+    reviewClientStateId: 4, // CORRECCIÓN CLIENTE
+    approvedStateId: 5,
     clienteColumn: 'estado_copys',
   },
   grab: {
