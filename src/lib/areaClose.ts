@@ -17,6 +17,10 @@ export type PreflightLink = {
   label: string
   placeholder: string
   icon: string
+  /** Tipo del input. Default 'url'. */
+  type?: 'url' | 'number' | 'date'
+  /** Helper opcional bajo el input */
+  helper?: string
 }
 
 export type AreaCloseConfig = {
@@ -110,7 +114,24 @@ export const AREA_CLOSE_CONFIG: Record<UserArea, AreaCloseConfig> = {
     commentField: 'comentario_subida',
     commentPlaceholder: 'observaciones de la publicación (qué quedó pendiente, ajustes finos…)',
     dateField: 'fecha_publicacion',
-    preflight: [],
+    preflight: [
+      {
+        field: 'cantidad_contenidos_subidos',
+        label: 'Cantidad de contenidos subidos',
+        placeholder: 'ej: 30',
+        icon: '🔢',
+        type: 'number',
+        helper: 'Cuántos contenidos efectivamente quedaron programados/publicados. Validá contra lo pactado.',
+      },
+      {
+        field: 'fecha_ultimo_contenido_subido',
+        label: 'Última fecha de contenido del ciclo',
+        placeholder: 'AAAA-MM-DD',
+        icon: '📅',
+        type: 'date',
+        helper: 'Fecha del último post programado — para saber hasta cuándo hay contenido planificado.',
+      },
+    ],
     description: 'Todo el contenido del ciclo publicado. El loop pasa a Reportes para activar ads y armar el reporte final.',
     color: '#00d97e',
     emoji: '🚀',
