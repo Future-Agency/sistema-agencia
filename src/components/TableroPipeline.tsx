@@ -51,6 +51,19 @@ const AREA_LABEL: Record<UserArea, string> = {
 }
 const ALL_AREAS_FOR_PARALLEL: UserArea[] = ['copys', 'grab', 'edit', 'diseno', 'subida', 'anuncios']
 
+/** Para el badge "🔗 también en X": qué áreas se consideran "paralelas válidas" desde cada área.
+ *  Copys y grab son inicios del flujo — mostrar "también en edit/diseno" es ruido (esas piezas
+ *  están más avanzadas que las de copys, no es trabajo paralelo). En post-copys/grab, las áreas
+ *  edit/diseno/subida/anuncios sí pueden ser paralelas (videos en edit + portadas en diseño, etc.). */
+const PARALLEL_AREAS_BY_AREA: Record<UserArea, UserArea[]> = {
+  copys:    [],
+  grab:     [],
+  edit:     ['diseno', 'subida', 'anuncios'],
+  diseno:   ['edit', 'subida', 'anuncios'],
+  subida:   ['edit', 'diseno', 'anuncios'],
+  anuncios: ['edit', 'diseno', 'subida'],
+}
+
 function colNameFor(area: UserArea): keyof Pieza {
   if (area === 'edit') return 'estado_edicion'
   return `estado_${area}` as keyof Pieza
@@ -325,8 +338,10 @@ export default function TableroPipeline({
       if (!b) {
         const cliente = clienteById.get(p.cliente_id)
         if (!cliente) continue
+        // Filtrar paralelas válidas para esta área (excluyendo posteriores que serían ruido)
+        const validParallels = new Set(PARALLEL_AREAS_BY_AREA[area] ?? [])
         const others = Array.from(activeAreasByLoop.get(key) ?? new Set<UserArea>())
-          .filter(a => a !== area)
+          .filter(a => a !== area && validParallels.has(a))
         b = { key, cliente, cicloMes: p.ciclo_mes, piezas: [], dominantState: '', aprobadas: 0, total: 0, otherActiveAreas: others }
         map.set(key, b)
       }
