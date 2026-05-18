@@ -130,6 +130,13 @@ export type ClienteCicloRecursos = {
   fecha_grabacion_confirmada: string | null
   actor_actriz: string | null
   notas: string | null
+  // Cierre de pipeline Subida (B2)
+  cantidad_contenidos_subidos: number | null
+  fecha_ultimo_contenido_subido: string | null
+  // Pendiente de información en Copys (B7)
+  pendiente_info_motivos: string[] | null
+  pendiente_info_otro: string | null
+  pendiente_info_no_aplica: boolean | null
   created_at: string
   updated_at: string
 }

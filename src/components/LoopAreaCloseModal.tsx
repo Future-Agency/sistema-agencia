@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, type Cliente, type ClienteCicloRecursos } from '@/lib/supabase'
 import type { CurrentUser, UserArea } from '@/lib/users'
-import { AREA_CLOSE_CONFIG, missingPreflight } from '@/lib/areaClose'
+import { AREA_CLOSE_CONFIG, missingPreflight, type PreflightLink } from '@/lib/areaClose'
 import { cicloMesLabel } from '@/lib/cycles'
 
 type Batch = {
@@ -31,6 +31,23 @@ function looksLikeUrl(s: string): boolean {
   return t.startsWith('http://') || t.startsWith('https://')
 }
 
+/** Valida un valor según el tipo del preflight field. */
+function isPreflightFieldOk(p: PreflightLink, value: string): boolean {
+  const v = (value ?? '').trim()
+  if (!v) return false
+  switch (p.type) {
+    case 'number': {
+      const n = Number(v)
+      return Number.isFinite(n) && n >= 0
+    }
+    case 'date':
+      return !isNaN(new Date(v).getTime())
+    case 'url':
+    default:
+      return looksLikeUrl(v)
+  }
+}
+
 export default function LoopAreaCloseModal({ agenciaId: _ag, area, batch, toState, onClose, onConfirm }: Props) {
   const cfg = AREA_CLOSE_CONFIG[area]
   const [linkUrl, setLinkUrl] = useState('')
@@ -57,8 +74,10 @@ export default function LoopAreaCloseModal({ agenciaId: _ag, area, batch, toStat
         if (commentVal) setComment(commentVal)
         const pre: Record<string, string> = {}
         cfg.preflight.forEach(p => {
-          const v = rec[p.field] as string | null
-          if (v) pre[p.field as string] = v
+          const v = rec[p.field]
+          if (v !== null && v !== undefined && String(v).trim() !== '') {
+            pre[p.field as string] = String(v)
+          }
         })
         setPreflightValues(pre)
       })
@@ -67,13 +86,13 @@ export default function LoopAreaCloseModal({ agenciaId: _ag, area, batch, toStat
   const linkOk = looksLikeUrl(linkUrl)
   const preflightOk = useMemo(() => {
     if (cfg.preflight.length === 0) return true
-    return cfg.preflight.every(p => looksLikeUrl(preflightValues[p.field as string] || ''))
+    return cfg.preflight.every(p => isPreflightFieldOk(p, preflightValues[p.field as string] || ''))
   }, [preflightValues, cfg.preflight])
   const canSubmit = linkOk && preflightOk
 
   const missingCount = useMemo(() => {
     if (cfg.preflight.length === 0) return 0
-    return cfg.preflight.filter(p => !looksLikeUrl(preflightValues[p.field as string] || '')).length
+    return cfg.preflight.filter(p => !isPreflightFieldOk(p, preflightValues[p.field as string] || '')).length
   }, [preflightValues, cfg.preflight])
 
   const handleSubmit = async () => {
@@ -127,7 +146,8 @@ export default function LoopAreaCloseModal({ agenciaId: _ag, area, batch, toStat
             <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
               {cfg.preflight.map(p => {
                 const value = preflightValues[p.field as string] || ''
-                const isOk = looksLikeUrl(value)
+                const isOk = isPreflightFieldOk(p, value)
+                const inputType = p.type === 'date' ? 'date' : p.type === 'number' ? 'number' : 'text'
                 return (
                   <div key={p.field as string}>
                     <label style={{
@@ -139,8 +159,9 @@ export default function LoopAreaCloseModal({ agenciaId: _ag, area, batch, toStat
                       {isOk && <i className="fas fa-check" style={{ marginLeft: 'auto', color: '#00d97e' }} />}
                     </label>
                     <input
-                      type="text"
+                      type={inputType}
                       value={value}
+                      min={p.type === 'number' ? 0 : undefined}
                       onChange={e => setPreflightValues({ ...preflightValues, [p.field as string]: e.target.value })}
                       placeholder={p.placeholder}
                       style={{
@@ -151,6 +172,11 @@ export default function LoopAreaCloseModal({ agenciaId: _ag, area, batch, toStat
                         outline: 'none', fontFamily: 'inherit',
                       }}
                     />
+                    {p.helper && (
+                      <div style={{ fontSize: 10, color: '#6a6a80', marginTop: 3, lineHeight: 1.4 }}>
+                        {p.helper}
+                      </div>
+                    )}
                   </div>
                 )
               })}
