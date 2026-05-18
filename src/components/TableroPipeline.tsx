@@ -764,27 +764,43 @@ export default function TableroPipeline({
                                         }}
                                       >NO APLICA</button>
                                     )}
-                                    {/* Botón "↺ mandar a corrección/revisión" — atajo para retroceder */}
+                                    {/* Botón "↺ mandar a corrección/revisión" — click directo al primero, ▾ para dropdown */}
                                     {(() => {
                                       const opciones = correctionOptions.filter(s => s.label !== batch.dominantState)
                                       if (opciones.length === 0) return null
                                       const isOpen = menuOpenForKey === batch.key
+                                      const primary = opciones[0]
+                                      const hasMore = opciones.length > 1
                                       return (
-                                        <div style={{ position: 'relative' as const }}>
+                                        <div style={{ position: 'relative' as const, display: 'flex', gap: 0 }}>
                                           <button
-                                            onClick={(e) => { e.stopPropagation(); setMenuOpenForKey(isOpen ? null : batch.key) }}
-                                            title="Mandar a corrección / revisión"
+                                            onClick={(e) => { e.stopPropagation(); moveBatchTo(batch, primary.label) }}
+                                            title={`Mandar a ${primary.label}`}
                                             disabled={isSaving}
                                             style={{
                                               background: '#f5365c22', border: '1px solid #f5365c55',
                                               color: '#f5365c', fontSize: 11, fontWeight: 700,
-                                              padding: '3px 7px', borderRadius: 4,
+                                              padding: '3px 7px',
+                                              borderRadius: hasMore ? '4px 0 0 4px' : 4,
+                                              borderRight: hasMore ? 'none' : '1px solid #f5365c55',
                                               cursor: isSaving ? 'wait' : 'pointer',
                                               opacity: isSaving ? 0.5 : 1,
                                             }}
-                                          >
-                                            ↺
-                                          </button>
+                                          >↺</button>
+                                          {hasMore && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setMenuOpenForKey(isOpen ? null : batch.key) }}
+                                              title="Otras opciones de corrección"
+                                              disabled={isSaving}
+                                              style={{
+                                                background: '#f5365c22', border: '1px solid #f5365c55',
+                                                color: '#f5365c', fontSize: 9, fontWeight: 700,
+                                                padding: '3px 4px', borderRadius: '0 4px 4px 0',
+                                                cursor: isSaving ? 'wait' : 'pointer',
+                                                opacity: isSaving ? 0.5 : 1,
+                                              }}
+                                            >▾</button>
+                                          )}
                                           {isOpen && (
                                             <>
                                               <div
