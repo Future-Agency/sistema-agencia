@@ -181,6 +181,8 @@ export const VIEW_VISIBILITY: Record<string, ViewVisibility> = {
   // Phase 9 — fechas especiales / pedidos
   fechas:       'admin+semi',
   pedidos:      'admin+semi',
+  // B3 — deudas de contenido
+  deudas:       'admin+semi',
   // Vistas analíticas — solo admin
   gestion:      'admin',
   diagnostico:  'admin',
@@ -268,6 +270,7 @@ export const VIEW_TO_AREAS: Record<string, UserArea[] | null> = {
   // Phase 9
   fechas:  null,
   pedidos: null,
+  deudas:  null,
   metricas: null,
   equipo: null,
 }

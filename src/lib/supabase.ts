@@ -647,6 +647,26 @@ export type PedidoCliente = {
   updated_at: string
 }
 
+// B3: Sistema de deudas de contenido
+export type DeudaContenidoEstado = 'pendiente' | 'saldada' | 'cancelada'
+export type DeudaContenidoOrigen = 'manual' | 'auto_subida'
+export type DeudaContenido = {
+  id: number
+  agencia_id: string
+  cliente_id: number
+  ciclo_origen: string
+  cantidad: number  // positivo = debemos; negativo = saldo a favor
+  motivo: string | null
+  estado: DeudaContenidoEstado
+  origen: DeudaContenidoOrigen
+  creado_por: string | null
+  resolved_at: string | null
+  resolved_by: string | null
+  notas: string | null
+  created_at: string
+  updated_at: string
+}
+
 export const FASES_ONBOARDING = [
   { id: 'crear_grupo', name: 'Crear Grupo', defaultDays: 1, icon: 'fa-users' },
   { id: 'envio_form', name: 'Envio Formulario Onboarding', defaultDays: 2, icon: 'fa-file-alt' },
