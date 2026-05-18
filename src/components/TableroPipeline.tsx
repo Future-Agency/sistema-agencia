@@ -4,13 +4,14 @@ import { flushSync } from 'react-dom'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import { supabase, type Cliente, type Owner, type Pieza, type PiezaTipo } from '@/lib/supabase'
 import type { CurrentUser, UserArea } from '@/lib/users'
-import { AREA_DEFS, type AreaState } from '@/lib/areaStates'
+import { AREA_DEFS, type AreaState, ESTADO_PENDIENTE_INFO_LABEL } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO } from '@/lib/piezas'
 import { cicloMesLabel, parseCicloMes, currentCicloMes, prevCicloMes, nextCicloMes, type CicloMes } from '@/lib/cycles'
 import { AREA_CLOSE_CONFIG } from '@/lib/areaClose'
 import { getPreflightGate, missingPreflightFields } from '@/lib/areaPreflightGates'
 import LoopAreaCloseModal from './LoopAreaCloseModal'
 import LoopAreaPreflightModal from './LoopAreaPreflightModal'
+import LoopPendienteInfoModal from './LoopPendienteInfoModal'
 
 type Props = {
   area: UserArea
@@ -139,6 +140,7 @@ export default function TableroPipeline({
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [pendingClose, setPendingClose] = useState<{ batch: LoopBatch; toState: string } | null>(null)
   const [pendingPreflight, setPendingPreflight] = useState<{ batch: LoopBatch; fromState: string; toState: string } | null>(null)
+  const [pendingPendienteInfo, setPendingPendienteInfo] = useState<{ batch: LoopBatch; toState: string } | null>(null)
   const [menuOpenForKey, setMenuOpenForKey] = useState<string | null>(null)
   const [cycleMenuOpenForKey, setCycleMenuOpenForKey] = useState<string | null>(null)
 
@@ -445,9 +447,15 @@ export default function TableroPipeline({
     setOptimistic(prev => { const n = { ...prev }; delete n[batch.key]; return n })
   }, [persistBatchTransition, loadPiezas])
 
-  // Función compartida entre drag-end y click "→" — intercepta close + preflight
+  // Función compartida entre drag-end y click "→" — intercepta close + preflight + pendiente-info
   const moveBatchTo = useCallback(async (batch: LoopBatch, toState: string) => {
     if (batch.dominantState === toState) return
+
+    // 0. Pendiente de información (Copys) → modal con motivos multi-select
+    if (area === 'copys' && toState === ESTADO_PENDIENTE_INFO_LABEL) {
+      setPendingPendienteInfo({ batch, toState })
+      return
+    }
 
     // 1. Cierre de área → modal con link + comment + preflight
     const cfg = AREA_CLOSE_CONFIG[area]
@@ -492,6 +500,37 @@ export default function TableroPipeline({
     if (nextIdx >= stateList.length) return
     await moveBatchTo(batch, stateList[nextIdx].label)
   }, [stateList, moveBatchTo])
+
+  // Marcar el batch como "NO APLICA" en PENDIENTE DE INFORMACIÓN — saltea
+  // el estado y pasa directo a MÉTRICAS. Persiste el flag en recursos.
+  const marcarNoAplica = useCallback(async (batch: LoopBatch) => {
+    const ok = window.confirm(
+      `Marcar ${batch.cliente.nombre} (${cicloMesLabel(batch.cicloMes)}) como NO APLICA y pasar a MÉTRICAS?`
+    )
+    if (!ok) return
+    setSavingKey(batch.key)
+    const { error } = await supabase
+      .from('cliente_ciclo_recursos')
+      .upsert({
+        agencia_id: agenciaId,
+        cliente_id: batch.cliente.id,
+        ciclo_mes: batch.cicloMes,
+        pendiente_info_no_aplica: true,
+        pendiente_info_motivos: null,
+        pendiente_info_otro: null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'cliente_id,ciclo_mes' })
+    if (error) {
+      setSavingKey(null)
+      const msg = /pendiente_info/i.test(error.message)
+        ? 'Falta aplicar la migration sql/2026-05-17_pendiente_info_copys.sql'
+        : error.message
+      setToast({ msg: `Error: ${msg}`, type: 'err' })
+      return
+    }
+    // Pasar a MÉTRICAS (siguiente estado del flujo)
+    await doMove(batch, stateList[1]?.label ?? 'MÉTRICAS')
+  }, [agenciaId, doMove, stateList])
 
   // Mover todas las piezas del batch a otro ciclo (UPDATE bulk en piezas.ciclo_mes)
   const moveBatchToCycle = useCallback(async (batch: LoopBatch, targetCycle: CicloMes) => {
@@ -709,6 +748,22 @@ export default function TableroPipeline({
                                     <span style={{ fontSize: 10, color: '#6a6a80', fontWeight: 700, minWidth: 36, textAlign: 'right' as const }}>
                                       {batch.aprobadas}/{batch.total}
                                     </span>
+                                    {/* Botón "NO APLICA" — visible sólo en PENDIENTE DE INFORMACIÓN (copys) */}
+                                    {area === 'copys' && batch.dominantState === ESTADO_PENDIENTE_INFO_LABEL && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); marcarNoAplica(batch) }}
+                                        title="No aplica este ciclo — saltar a MÉTRICAS"
+                                        disabled={isSaving}
+                                        style={{
+                                          background: 'rgba(106,106,128,.15)', border: '1px solid #6a6a80',
+                                          color: '#a0a0b8', fontSize: 10, fontWeight: 700,
+                                          padding: '3px 6px', borderRadius: 4,
+                                          cursor: isSaving ? 'wait' : 'pointer',
+                                          opacity: isSaving ? 0.5 : 1,
+                                          letterSpacing: 0.3,
+                                        }}
+                                      >NO APLICA</button>
+                                    )}
                                     {/* Botón "↺ mandar a corrección/revisión" — atajo para retroceder */}
                                     {(() => {
                                       const opciones = correctionOptions.filter(s => s.label !== batch.dominantState)
@@ -879,6 +934,20 @@ export default function TableroPipeline({
             })}
           </div>
         </DragDropContext>
+      )}
+
+      {/* Modal de PENDIENTE DE INFORMACIÓN (copys) — multi-select de motivos */}
+      {pendingPendienteInfo && (
+        <LoopPendienteInfoModal
+          agenciaId={agenciaId}
+          batch={pendingPendienteInfo.batch}
+          onClose={() => setPendingPendienteInfo(null)}
+          onConfirm={async () => {
+            const { batch, toState } = pendingPendienteInfo
+            setPendingPendienteInfo(null)
+            await doMove(batch, toState)
+          }}
+        />
       )}
 
       {/* Modal de preflight gate (ej: copys MÉTRICAS → POR HACER SCRIPTS) */}
