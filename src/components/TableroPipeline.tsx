@@ -388,6 +388,32 @@ export default function TableroPipeline({
         .from('cliente_ciclo_recursos')
         .upsert(recursosUpdate, { onConflict: 'cliente_id,ciclo_mes' })
       if (eRec) return { ok: false, error: `Estado guardado, pero recursos no: ${eRec.message}` }
+
+      // ============ B3: Auto-generación de deuda al cerrar SUBIDA ============
+      // Si la cantidad de contenidos subidos < lo pactado en el plan del cliente,
+      // creamos una deuda automática "auto_subida" para tracking.
+      if (area === 'subida' && closeData.preflightFields?.cantidad_contenidos_subidos) {
+        try {
+          const subidos = Number(closeData.preflightFields.cantidad_contenidos_subidos)
+          const c = batch.cliente as Cliente & { plan_videos?: number; plan_portadas?: number; plan_carrouseles?: number; plan_historias?: number }
+          const pactado = (c.plan_videos ?? 0) + (c.plan_portadas ?? 0) + (c.plan_carrouseles ?? 0) + (c.plan_historias ?? 0)
+          if (pactado > 0 && Number.isFinite(subidos) && subidos < pactado) {
+            const falta = pactado - subidos
+            await supabase.from('deudas_contenido').insert({
+              agencia_id: agenciaId,
+              cliente_id: batch.cliente.id,
+              ciclo_origen: batch.cicloMes,
+              cantidad: falta,
+              motivo: `Faltaron ${falta} contenidos vs lo pactado (${subidos}/${pactado})`,
+              origen: 'auto_subida',
+              estado: 'pendiente',
+              creado_por: currentUser.name,
+            })
+          }
+        } catch (err) {
+          console.warn('[deuda auto-subida]', err)
+        }
+      }
     }
 
     // ============ SYNC GLOBAL ============
@@ -424,7 +450,7 @@ export default function TableroPipeline({
     }
 
     return { ok: true }
-  }, [agenciaId, area, colKey])
+  }, [agenciaId, area, colKey, currentUser.name])
 
   // Ejecuta la transición sin intercepción (después de modales pasados)
   const doMove = useCallback(async (batch: LoopBatch, toState: string) => {
