@@ -193,13 +193,25 @@ function PedidoCard({ p, cliente, canEdit, onEdit, onDelete, onUpdateState }: {
 
       {/* Meta line */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const, marginBottom: 8 }}>
-        {/* Areas */}
+        {/* Areas que APLICAN */}
         {p.areas.map(a => (
-          <span key={a} style={{
+          <span key={`a-${a}`} style={{
             fontSize: 10, padding: '2px 6px', borderRadius: 3,
-            background: '#22223a', color: '#a0a0b8',
+            background: 'rgba(0,217,126,.10)', color: '#00d97e',
+            border: '1px solid rgba(0,217,126,.30)',
           }}>
-            {AREA_ICON[a as UserArea] || ''} {a}
+            ✓ {AREA_ICON[a as UserArea] || ''} {a}
+          </span>
+        ))}
+        {/* Areas que NO APLICAN */}
+        {(p.areas_no_aplica ?? []).map(a => (
+          <span key={`n-${a}`} style={{
+            fontSize: 10, padding: '2px 6px', borderRadius: 3,
+            background: 'rgba(245,54,92,.08)', color: '#f5365c',
+            border: '1px solid rgba(245,54,92,.25)',
+            textDecoration: 'line-through' as const,
+          }}>
+            ✗ {AREA_ICON[a as UserArea] || ''} {a}
           </span>
         ))}
         {/* Prioridad */}
@@ -259,6 +271,7 @@ function PedidoModal({ agenciaId, currentUser, clientes, item, onClose, onSaved 
   const [descripcion, setDescripcion] = useState(item.descripcion ?? '')
   const [clienteId, setClienteId] = useState<number | ''>(item.cliente_id ?? '')
   const [areas, setAreas] = useState<Set<UserArea>>(new Set((item.areas ?? []) as UserArea[]))
+  const [areasNoAplica, setAreasNoAplica] = useState<Set<UserArea>>(new Set((item.areas_no_aplica ?? []) as UserArea[]))
   const [deadline, setDeadline] = useState(item.deadline ?? '')
   const [estado, setEstado] = useState<PedidoClienteEstado>(item.estado ?? 'pendiente')
   const [prioridad, setPrioridad] = useState<PedidoClientePrioridad>(item.prioridad ?? 'media')
@@ -268,11 +281,26 @@ function PedidoModal({ agenciaId, currentUser, clientes, item, onClose, onSaved 
   const [error, setError] = useState<string | null>(null)
   const isNew = !item.id
 
-  const toggleArea = (a: UserArea) => {
-    const next = new Set(areas)
-    if (next.has(a)) next.delete(a); else next.add(a)
-    setAreas(next)
+  // Tri-state: sin marcar → aplica → no aplica → sin marcar
+  const cycleAreaState = (a: UserArea) => {
+    const isAplica = areas.has(a)
+    const isNoAplica = areasNoAplica.has(a)
+    const aSet = new Set(areas)
+    const nSet = new Set(areasNoAplica)
+    if (!isAplica && !isNoAplica) {
+      // sin marcar → aplica
+      aSet.add(a)
+    } else if (isAplica) {
+      // aplica → no aplica
+      aSet.delete(a); nSet.add(a)
+    } else {
+      // no aplica → sin marcar
+      nSet.delete(a)
+    }
+    setAreas(aSet); setAreasNoAplica(nSet)
   }
+  const getAreaState = (a: UserArea): 'aplica' | 'no_aplica' | 'sin_marcar' =>
+    areas.has(a) ? 'aplica' : areasNoAplica.has(a) ? 'no_aplica' : 'sin_marcar'
 
   const save = async () => {
     if (!nombre.trim()) { setError('Nombre requerido'); return }
@@ -284,6 +312,7 @@ function PedidoModal({ agenciaId, currentUser, clientes, item, onClose, onSaved 
       nombre: nombre.trim(),
       descripcion: descripcion.trim() || null,
       areas: Array.from(areas),
+      areas_no_aplica: Array.from(areasNoAplica),
       deadline: deadline || null,
       estado, prioridad,
       responsable: responsable.trim() || null,
@@ -317,19 +346,27 @@ function PedidoModal({ agenciaId, currentUser, clientes, item, onClose, onSaved 
           </select>
         </Field>
 
-        <Field label="Áreas involucradas">
+        <Field label="Áreas (click cicla: sin marcar → aplica → no aplica)">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
             {AREAS.map(a => {
-              const active = areas.has(a)
+              const st = getAreaState(a)
+              const isAplica = st === 'aplica'
+              const isNoAplica = st === 'no_aplica'
+              const bg = isAplica ? '#00d97e22' : isNoAplica ? '#f5365c22' : '#0a0a0f'
+              const border = isAplica ? '#00d97e' : isNoAplica ? '#f5365c' : '#2a2a40'
+              const color = isAplica ? '#00d97e' : isNoAplica ? '#f5365c' : '#a0a0b8'
               return (
-                <button key={a} onClick={() => toggleArea(a)}
+                <button key={a} onClick={() => cycleAreaState(a)}
+                  title={isAplica ? 'Aplica' : isNoAplica ? 'No aplica' : 'Sin marcar (click para alternar)'}
                   style={{
+                    position: 'relative' as const,
                     padding: '8px 4px', borderRadius: 6,
-                    background: active ? '#5e72e4' + '22' : '#0a0a0f',
-                    border: `1px solid ${active ? '#5e72e4' : '#2a2a40'}`,
-                    color: active ? '#5e72e4' : '#a0a0b8',
-                    fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    background: bg,
+                    border: `1px solid ${border}`,
+                    color, fontSize: 11, fontWeight: 600, cursor: 'pointer',
                   }}>
+                  {isAplica && <span style={{ position: 'absolute' as const, top: 2, right: 4, fontSize: 9 }}>✓</span>}
+                  {isNoAplica && <span style={{ position: 'absolute' as const, top: 2, right: 4, fontSize: 9 }}>✗</span>}
                   <div style={{ fontSize: 14 }}>{AREA_ICON[a]}</div>
                   {a}
                 </button>

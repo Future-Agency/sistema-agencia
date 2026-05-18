@@ -629,6 +629,7 @@ export type PedidoCliente = {
   nombre: string
   descripcion: string | null
   areas: string[]
+  areas_no_aplica: string[] | null
   stage_states: Record<string, string> | null
   deadline: string | null  // YYYY-MM-DD
   estado: PedidoClienteEstado
