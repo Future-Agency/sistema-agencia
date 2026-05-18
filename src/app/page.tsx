@@ -582,7 +582,7 @@ export default function Home() {
               }}
             />
           ) : view === 'fechas' ? (
-            <TableroFechasEspeciales agenciaId={agenciaId} currentUser={currentUser} />
+            <TableroFechasEspeciales agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} />
           ) : view === 'pedidos' ? (
             <TableroPedidosClientes agenciaId={agenciaId} clientes={filteredClientes} currentUser={currentUser} />
           ) : view === 'gestion' ? (

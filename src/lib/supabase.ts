@@ -614,6 +614,12 @@ export type FechaEspecial = {
   fecha_evento: string  // YYYY-MM-DD
   dias_anticipacion: number
   client_states: Record<string, string> | null
+  // B5: clientes participantes + areas aplica/no aplica + info gate
+  clientes_participantes: number[] | null
+  areas: string[] | null
+  areas_no_aplica: string[] | null
+  info_requerida: string | null
+  info_lista: boolean | null
   creado_por: string | null
   created_at: string
   updated_at: string
