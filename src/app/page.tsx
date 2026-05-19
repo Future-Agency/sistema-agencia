@@ -61,7 +61,22 @@ export default function Home() {
   const [showStandby, setShowStandby] = useState(false)
   const [cycleFilter, setCycleFilter] = useState<CicloMes | null>(currentCicloMes())
   const [startingNewCycle, setStartingNewCycle] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // En mobile arranca cerrado (drawer); en desktop arranca abierto.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.innerWidth < 768
+  })
+  // Detectar mobile en runtime para conditional render del overlay del drawer.
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.innerWidth < 768
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const [showNewModal, setShowNewModal] = useState(false)
   const [showEquipoModal, setShowEquipoModal] = useState(false)
   const [showStandbyModal, setShowStandbyModal] = useState(false)
@@ -378,6 +393,10 @@ export default function Home() {
 
   return (
     <div>
+      {/* Overlay del drawer (solo mobile cuando está abierto) */}
+      {isMobile && !sidebarCollapsed && (
+        <div className="sidebar-overlay" onClick={() => setSidebarCollapsed(true)} />
+      )}
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="logo">
           <img src="/logo-future.jpg" alt="Future" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
@@ -403,6 +422,7 @@ export default function Home() {
                     return
                   }
                   setView(item.id); setSelectedCliente(null)
+                  if (isMobile) setSidebarCollapsed(true)  // auto-cerrar drawer en mobile
                 }}>
                 <i className={`fas ${item.icon}`} />
                 {!sidebarCollapsed && (
