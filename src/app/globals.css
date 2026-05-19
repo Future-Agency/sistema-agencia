@@ -147,8 +147,60 @@ input[type="date"].editable-select::-webkit-calendar-picker-indicator { filter: 
 [data-rbd-draggable-context-id] { transition: transform 0.2s ease; }
 [data-rbd-droppable-id] { transition: background 0.2s ease, border-color 0.2s ease; }
 
+/* ============== Mobile / responsive ============== */
 @media (max-width: 768px) {
-  .sidebar { display: none; }
+  /* Sidebar como drawer: oculto por default, se abre con la clase no-collapsed */
+  .sidebar {
+    width: 280px !important;
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    box-shadow: none;
+  }
+  .sidebar:not(.collapsed) {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,.5);
+  }
+  /* Overlay (sólo cuando el drawer está abierto) */
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 99;
+    animation: fadein .2s ease;
+  }
+  /* Main siempre ocupa todo el ancho en mobile, no se desplaza */
   .main { margin-left: 0 !important; }
-  .tv-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+
+  /* Topbar más compacto */
+  .topbar {
+    padding: 0 12px;
+    height: 52px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .topbar-title { font-size: 15px; }
+  .topbar-actions { gap: 6px; flex-wrap: wrap; }
+  .search-wrap { max-width: 100%; }
+  .search-input { width: 140px !important; font-size: 13px; }
+  .select-custom { font-size: 12px; padding: 6px 8px !important; }
+
+  /* Cards más compactas */
+  .card-header { padding: 12px 14px; }
+  .card-body { padding: 14px; }
+
+  /* Pipeline: scroll horizontal con snap, cada columna ocupa ~85vw para que asome la siguiente */
+  .pipeline-cols-mobile {
+    grid-template-columns: repeat(var(--pipeline-cols, 6), 85vw) !important;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pipeline-cols-mobile > div { scroll-snap-align: start; }
+
+  /* Tap targets más grandes — botones mínimo 36px (cerca del estándar 44px sin romper layout existente) */
+  button, .nav-item { min-height: 36px; }
+
+  /* TV grid */
+  .tv-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }
+
+@keyframes fadein { from { opacity: 0 } to { opacity: 1 } }

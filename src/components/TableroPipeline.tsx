@@ -803,13 +803,16 @@ export default function TableroPipeline({
         </div>
       ) : (
         <DragDropContext onDragEnd={onDragEnd}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${visibleStates.length}, minmax(220px, 1fr))`,
-            gap: 10,
-            overflowX: 'auto' as const,
-            paddingBottom: 8,
-          }}>
+          <div
+            className="pipeline-cols-mobile"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${visibleStates.length}, minmax(220px, 1fr))`,
+              gap: 10,
+              overflowX: 'auto' as const,
+              paddingBottom: 8,
+              ['--pipeline-cols' as never]: visibleStates.length as never,
+            }}>
             {visibleStates.map(state => {
               const list = byState[state.label] ?? []
               const stateColor = state.color || def.primaryColor
