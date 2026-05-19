@@ -171,18 +171,33 @@ input[type="date"].editable-select::-webkit-calendar-picker-indicator { filter: 
   /* Main siempre ocupa todo el ancho en mobile, no se desplaza */
   .main { margin-left: 0 !important; }
 
-  /* Topbar más compacto */
+  /* Topbar: fila 1 = hamburger+título+user, fila 2 = filtros full width */
   .topbar {
-    padding: 0 12px;
-    height: 52px;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 52px;
+    padding: 8px 12px;
+    gap: 8px;
+    align-items: center;
+  }
+  .topbar > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .topbar-title { font-size: 14px; }
+  .topbar-actions {
+    width: 100%;
     flex-wrap: wrap;
     gap: 6px;
+    order: 2;
   }
-  .topbar-title { font-size: 15px; }
-  .topbar-actions { gap: 6px; flex-wrap: wrap; }
-  .search-wrap { max-width: 100%; }
-  .search-input { width: 140px !important; font-size: 13px; }
-  .select-custom { font-size: 12px; padding: 6px 8px !important; }
+  .topbar-actions > * { font-size: 12px; }
+  .search-wrap {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .search-input { width: 100% !important; font-size: 13px; }
+  .select-custom { font-size: 12px; padding: 6px 8px !important; flex: 1 1 auto; min-width: 0; }
 
   /* Cards más compactas */
   .card-header { padding: 12px 14px; }
