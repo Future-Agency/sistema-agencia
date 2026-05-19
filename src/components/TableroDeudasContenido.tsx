@@ -43,14 +43,21 @@ export default function TableroDeudasContenido({ agenciaId, currentUser, cliente
 
   // Agrupado por cliente (sumando deudas pendientes)
   const porCliente = useMemo(() => {
-    const m = new Map<number, { cliente: Cliente; total: number; deudas: DeudaContenido[] }>()
+    const m = new Map<number, {
+      cliente: Cliente; total: number; deudas: DeudaContenido[]
+      videos: number; portadas: number; carrouseles: number; historias: number
+    }>()
     for (const d of items) {
       if (d.estado !== 'pendiente') continue
       const c = clienteById.get(d.cliente_id)
       if (!c) continue
-      if (!m.has(c.id)) m.set(c.id, { cliente: c, total: 0, deudas: [] })
+      if (!m.has(c.id)) m.set(c.id, { cliente: c, total: 0, deudas: [], videos: 0, portadas: 0, carrouseles: 0, historias: 0 })
       const bucket = m.get(c.id)!
       bucket.total += d.cantidad
+      bucket.videos      += d.cantidad_videos      ?? 0
+      bucket.portadas    += d.cantidad_portadas    ?? 0
+      bucket.carrouseles += d.cantidad_carrouseles ?? 0
+      bucket.historias   += d.cantidad_historias   ?? 0
       bucket.deudas.push(d)
     }
     return Array.from(m.values()).sort((a, b) => b.total - a.total)
@@ -118,21 +125,38 @@ export default function TableroDeudasContenido({ agenciaId, currentUser, cliente
             Por cliente — pendientes
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-            {porCliente.map(({ cliente, total, deudas }) => (
-              <div key={cliente.id} style={{
-                padding: '10px 12px', borderRadius: 8,
-                background: '#1a1a28',
-                border: `1px solid ${total > 0 ? 'rgba(245,54,92,.30)' : 'rgba(0,217,126,.30)'}`,
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{cliente.nombre}</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: total > 0 ? '#f5365c' : '#00d97e', marginTop: 4 }}>
-                  {total > 0 ? `${total} contenidos` : `+${Math.abs(total)} a favor`}
+            {porCliente.map(({ cliente, total, deudas, videos, portadas, carrouseles, historias }) => {
+              const desglose: { icon: string; n: number }[] = [
+                { icon: '🎬', n: videos },
+                { icon: '🖼️', n: portadas },
+                { icon: '🎠', n: carrouseles },
+                { icon: '📱', n: historias },
+              ].filter(x => x.n !== 0)
+              return (
+                <div key={cliente.id} style={{
+                  padding: '10px 12px', borderRadius: 8,
+                  background: '#1a1a28',
+                  border: `1px solid ${total > 0 ? 'rgba(245,54,92,.30)' : 'rgba(0,217,126,.30)'}`,
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{cliente.nombre}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: total > 0 ? '#f5365c' : '#00d97e', marginTop: 4 }}>
+                    {total > 0 ? `${total} contenidos` : `+${Math.abs(total)} a favor`}
+                  </div>
+                  {desglose.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
+                      {desglose.map((d, i) => (
+                        <span key={i} style={{ fontSize: 10, color: total > 0 ? '#f5365c' : '#00d97e', fontWeight: 600 }}>
+                          {d.icon}{d.n > 0 ? '+' : ''}{d.n}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10, color: '#6a6a80', marginTop: 2 }}>
+                    {deudas.length} {deudas.length === 1 ? 'movimiento' : 'movimientos'}
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: '#6a6a80', marginTop: 2 }}>
-                  {deudas.length} {deudas.length === 1 ? 'movimiento' : 'movimientos'}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -184,6 +208,31 @@ export default function TableroDeudasContenido({ agenciaId, currentUser, cliente
                     Ciclo origen: <strong style={{ color: '#a0a0b8', textTransform: 'capitalize' as const }}>{cicloMesLabel(d.ciclo_origen)}</strong>
                     {' · '}origen: <span style={{ color: d.origen === 'auto_subida' ? '#5e72e4' : '#a0a0b8' }}>{d.origen === 'auto_subida' ? 'auto (subida)' : 'manual'}</span>
                   </div>
+                  {/* Desglose por tipo (si está cargado) */}
+                  {(() => {
+                    const chips: { icon: string; label: string; n: number }[] = [
+                      { icon: '🎬', label: 'Reels',       n: d.cantidad_videos ?? 0 },
+                      { icon: '🖼️', label: 'Portadas',    n: d.cantidad_portadas ?? 0 },
+                      { icon: '🎠', label: 'Carrouseles', n: d.cantidad_carrouseles ?? 0 },
+                      { icon: '📱', label: 'Historias',   n: d.cantidad_historias ?? 0 },
+                    ].filter(x => x.n !== 0)
+                    if (chips.length === 0) return null
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 6 }}>
+                        {chips.map(ch => (
+                          <span key={ch.label} style={{
+                            fontSize: 10, padding: '2px 7px', borderRadius: 3,
+                            background: isDebt ? 'rgba(245,54,92,.10)' : 'rgba(0,217,126,.10)',
+                            color: isDebt ? '#f5365c' : '#00d97e',
+                            border: `1px solid ${isDebt ? 'rgba(245,54,92,.30)' : 'rgba(0,217,126,.30)'}`,
+                            fontWeight: 600,
+                          }}>
+                            {ch.icon} {ch.label}: <strong>{ch.n > 0 ? '+' : ''}{ch.n}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    )
+                  })()}
                   {d.motivo && <div style={{ fontSize: 12, color: '#e8e8f0', marginTop: 4 }}>{d.motivo}</div>}
                 </div>
                 <span style={{
@@ -226,12 +275,23 @@ export default function TableroDeudasContenido({ agenciaId, currentUser, cliente
   )
 }
 
+const TIPOS_DEUDA = [
+  { key: 'videos',      label: 'Reels / Videos',  icon: '🎬' },
+  { key: 'portadas',    label: 'Portadas',         icon: '🖼️' },
+  { key: 'carrouseles', label: 'Carrouseles',      icon: '🎠' },
+  { key: 'historias',   label: 'Historias',        icon: '📱' },
+] as const
+
 function DeudaModal({ agenciaId, currentUser, clientes, item, onClose, onSaved }: {
   agenciaId: string; currentUser: CurrentUser; clientes: Cliente[]; item: Partial<DeudaContenido>; onClose: () => void; onSaved: () => void
 }) {
   const [clienteId, setClienteId] = useState<number | ''>(item.cliente_id ?? '')
   const [cicloOrigen, setCicloOrigen] = useState(item.ciclo_origen ?? '')
-  const [cantidad, setCantidad] = useState(item.cantidad ?? 1)
+  // 4 cantidades por tipo (siempre positivas en el input; el signo se aplica con el toggle)
+  const [cantVideos, setCantVideos]           = useState(Math.abs(item.cantidad_videos ?? 0))
+  const [cantPortadas, setCantPortadas]       = useState(Math.abs(item.cantidad_portadas ?? 0))
+  const [cantCarrouseles, setCantCarrouseles] = useState(Math.abs(item.cantidad_carrouseles ?? 0))
+  const [cantHistorias, setCantHistorias]     = useState(Math.abs(item.cantidad_historias ?? 0))
   const [signo, setSigno] = useState<'+' | '-'>(item.cantidad && item.cantidad < 0 ? '-' : '+')
   const [motivo, setMotivo] = useState(item.motivo ?? '')
   const [notas, setNotas] = useState(item.notas ?? '')
@@ -239,17 +299,29 @@ function DeudaModal({ agenciaId, currentUser, clientes, item, onClose, onSaved }
   const [error, setError] = useState<string | null>(null)
   const isNew = !item.id
 
+  const setters: Record<typeof TIPOS_DEUDA[number]['key'], (n: number) => void> = {
+    videos: setCantVideos, portadas: setCantPortadas, carrouseles: setCantCarrouseles, historias: setCantHistorias,
+  }
+  const valores: Record<typeof TIPOS_DEUDA[number]['key'], number> = {
+    videos: cantVideos, portadas: cantPortadas, carrouseles: cantCarrouseles, historias: cantHistorias,
+  }
+  const total = cantVideos + cantPortadas + cantCarrouseles + cantHistorias
+
   const save = async () => {
     if (!clienteId) { setError('Cliente requerido'); return }
     if (!cicloOrigen.trim()) { setError('Ciclo origen requerido (ej: mayo-2026)'); return }
-    const absCant = Math.abs(Number(cantidad))
-    if (!absCant || absCant === 0) { setError('Cantidad debe ser != 0'); return }
+    if (total === 0) { setError('Tenés que cargar al menos un tipo (Reels / Portadas / Carrouseles / Historias).'); return }
     setSaving(true); setError(null)
+    const mult = signo === '-' ? -1 : 1
     const payload = {
       agencia_id: agenciaId,
       cliente_id: Number(clienteId),
       ciclo_origen: cicloOrigen.trim(),
-      cantidad: signo === '-' ? -absCant : absCant,
+      cantidad: total * mult,
+      cantidad_videos:      cantVideos > 0      ? cantVideos * mult      : null,
+      cantidad_portadas:    cantPortadas > 0    ? cantPortadas * mult    : null,
+      cantidad_carrouseles: cantCarrouseles > 0 ? cantCarrouseles * mult : null,
+      cantidad_historias:   cantHistorias > 0   ? cantHistorias * mult   : null,
       motivo: motivo.trim() || null,
       notas: notas.trim() || null,
       origen: item.origen ?? 'manual',
@@ -266,7 +338,7 @@ function DeudaModal({ agenciaId, currentUser, clientes, item, onClose, onSaved }
 
   return (
     <div onClick={onClose} style={modalBackdrop}>
-      <div onClick={e => e.stopPropagation()} style={modalBox}>
+      <div onClick={e => e.stopPropagation()} style={{ ...modalBox, maxWidth: 560 }}>
         <h3 style={{ margin: 0, marginBottom: 14, color: '#fff' }}>
           {isNew ? 'Sumar deuda' : 'Editar deuda'}
         </h3>
@@ -276,25 +348,56 @@ function DeudaModal({ agenciaId, currentUser, clientes, item, onClose, onSaved }
             {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
         </Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
           <Field label="Ciclo origen">
             <input value={cicloOrigen} onChange={e => setCicloOrigen(e.target.value)} placeholder="mayo-2026" style={inputStyle} />
           </Field>
-          <Field label="Cantidad">
-            <div style={{ display: 'flex', gap: 4 }}>
-              <select value={signo} onChange={e => setSigno(e.target.value as '+' | '-')} style={{ ...inputStyle, width: 60, padding: '8px 6px' }}>
-                <option value="+">+</option>
-                <option value="-">-</option>
-              </select>
-              <input type="number" min={1} value={Math.abs(Number(cantidad))} onChange={e => setCantidad(Number(e.target.value))} style={{ ...inputStyle, flex: 1 }} />
-            </div>
+          <Field label="Tipo">
+            <select value={signo} onChange={e => setSigno(e.target.value as '+' | '-')} style={inputStyle}>
+              <option value="+">+ Debemos al cliente</option>
+              <option value="-">− Saldo a favor</option>
+            </select>
           </Field>
         </div>
-        <div style={{ fontSize: 11, color: '#6a6a80', marginTop: -6, marginBottom: 8 }}>
-          + = debemos al cliente; − = saldo a favor (subimos más de lo pactado)
-        </div>
+
+        <Field label="Cantidades por tipo">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+            {TIPOS_DEUDA.map(t => (
+              <div key={t.key} style={{
+                padding: '8px 10px', borderRadius: 6,
+                background: '#0a0a0f', border: `1px solid ${valores[t.key] > 0 ? (signo === '-' ? '#00d97e55' : '#f5365c55') : '#2a2a40'}`,
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <span style={{ fontSize: 16 }}>{t.icon}</span>
+                <span style={{ flex: 1, fontSize: 11, color: '#a0a0b8', fontWeight: 600 }}>{t.label}</span>
+                <input
+                  type="number" min={0} value={valores[t.key] || ''}
+                  onChange={e => setters[t.key](Math.max(0, Number(e.target.value) || 0))}
+                  placeholder="0"
+                  style={{
+                    width: 60, padding: '4px 6px', borderRadius: 4,
+                    background: '#1a1a28', border: '1px solid #2a2a40',
+                    color: '#e8e8f0', fontSize: 13, fontWeight: 700, textAlign: 'right' as const,
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <div style={{
+            marginTop: 8, padding: '8px 12px', borderRadius: 6,
+            background: total > 0 ? (signo === '-' ? 'rgba(0,217,126,.08)' : 'rgba(245,54,92,.08)') : '#0f0f15',
+            border: `1px solid ${total > 0 ? (signo === '-' ? '#00d97e' : '#f5365c') : '#2a2a40'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span style={{ fontSize: 11, color: '#a0a0b8', textTransform: 'uppercase' as const, letterSpacing: 0.4, fontWeight: 600 }}>Total</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: total > 0 ? (signo === '-' ? '#00d97e' : '#f5365c') : '#6a6a80' }}>
+              {total > 0 ? (signo === '-' ? '-' : '+') : ''}{total} contenidos
+            </span>
+          </div>
+        </Field>
+
         <Field label="Motivo">
-          <input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="ej: faltó subir 3 reels del ciclo de mayo" style={inputStyle} />
+          <input value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="ej: faltó subir reels del ciclo de mayo" style={inputStyle} />
         </Field>
         <Field label="Notas (opcional)">
           <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}
