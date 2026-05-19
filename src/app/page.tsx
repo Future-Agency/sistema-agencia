@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza, type DeudaContenido } from '@/lib/supabase'
 import { indexPiezasByLoop, loopEstaCompletado } from '@/lib/piezas'
 import { Loading, Toast } from '@/components/ui'
 import ConfirmNuevoCicloModal from '@/components/ConfirmNuevoCicloModal'
@@ -51,6 +51,7 @@ export default function Home() {
   const [equipo, setEquipo] = useState<Equipo[]>([])
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([])
   const [piezasAgencia, setPiezasAgencia] = useState<Pieza[]>([])
+  const [deudasAgencia, setDeudasAgencia] = useState<DeudaContenido[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [ownerFilter, setOwnerFilter] = useState('')
@@ -148,17 +149,31 @@ export default function Home() {
     if (currentUser && agenciaId) loadPiezasAgencia()
   }, [currentUser, agenciaId, loadPiezasAgencia])
 
-  // Listener: refrescar piezas cuando hay cambios cross-tab / realtime (silencioso)
+  // Carga global de deudas pendientes (para gate de cliente completado + badges)
+  const loadDeudasAgencia = useCallback(async () => {
+    const { data } = await supabase
+      .from('deudas_contenido')
+      .select('*')
+      .eq('agencia_id', agenciaId)
+      .eq('estado', 'pendiente')
+    setDeudasAgencia((data ?? []) as DeudaContenido[])
+  }, [agenciaId])
+
+  useEffect(() => {
+    if (currentUser && agenciaId) loadDeudasAgencia()
+  }, [currentUser, agenciaId, loadDeudasAgencia])
+
+  // Listener: refrescar piezas y deudas cuando hay cambios cross-tab / realtime (silencioso)
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const handler = () => { loadPiezasAgencia() }
+    const handler = () => { loadPiezasAgencia(); loadDeudasAgencia() }
     window.addEventListener('estado-loop-changed', handler)
     window.addEventListener('clientes-refresh', handler)
     return () => {
       window.removeEventListener('estado-loop-changed', handler)
       window.removeEventListener('clientes-refresh', handler)
     }
-  }, [loadPiezasAgencia])
+  }, [loadPiezasAgencia, loadDeudasAgencia])
 
   // Índice piezas por loop (cliente × ciclo) para chequeos rápidos
   const piezasByLoop = useMemo(() => indexPiezasByLoop(piezasAgencia), [piezasAgencia])
@@ -172,6 +187,18 @@ export default function Home() {
     }
     return m
   }, [piezasAgencia])
+
+  // Map<cliente_id, count> de deudas pendientes ASIGNADAS al ciclo actual del filtro.
+  // Usado por CycleHeader para no marcar como "completado" a clientes con deudas pendientes.
+  const deudasPendientesByClienteEnCiclo = useMemo(() => {
+    const cycle = cycleFilter ?? currentCicloMes()
+    const m = new Map<number, number>()
+    for (const d of deudasAgencia) {
+      if (d.ciclo_asignado !== cycle) continue
+      m.set(d.cliente_id, (m.get(d.cliente_id) ?? 0) + 1)
+    }
+    return m
+  }, [deudasAgencia, cycleFilter])
 
   // Modal de confirmación pesada antes de mover masivamente todos los clientes al ciclo siguiente.
   const [showNuevoCicloModal, setShowNuevoCicloModal] = useState(false)
@@ -561,17 +588,17 @@ export default function Home() {
           ) : view === 'general' ? (
             <>
               <UrgentesBar clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} />
-              <CycleHeader clientes={filteredClientes} piezasByLoop={piezasByLoop} cicloActual={cycleFilter ?? currentCicloMes()} cycleLabel={cicloMesLabel(cycleFilter ?? currentCicloMes()).split(' ')[0]} />
+              <CycleHeader clientes={filteredClientes} piezasByLoop={piezasByLoop} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} cicloActual={cycleFilter ?? currentCicloMes()} cycleLabel={cicloMesLabel(cycleFilter ?? currentCicloMes()).split(' ')[0]} />
               <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} />
             </>
           ) : view === 'copys' ? (
-            <TableroPipeline area="copys" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
+            <TableroPipeline area="copys" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} />
           ) : view === 'grab' ? (
-            <TableroPipeline area="grab" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
+            <TableroPipeline area="grab" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} />
           ) : view === 'grab-calendar' ? (
             <TableroGrabCalendar agenciaId={agenciaId} clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} />
           ) : view === 'subida' ? (
-            <TableroPipeline area="subida" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
+            <TableroPipeline area="subida" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} />
           ) : view === 'reporte' ? (
             <TableroPipeline
               area="anuncios"
@@ -582,6 +609,7 @@ export default function Home() {
               onSelectCliente={setSelectedCliente}
               ownerFilter={ownerFilter}
               cycleFilter={cycleFilter}
+              deudasPendientesByCliente={deudasPendientesByClienteEnCiclo}
               titleOverride={{
                 emoji: '📊',
                 title: 'Reportes · Cierre de ciclo',
@@ -631,9 +659,9 @@ export default function Home() {
           ) : view === 'produccion-legacy' ? (
             <TableroProduccion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} ownerFilter={ownerFilter} onOwnerFilterChange={setOwnerFilter} />
           ) : view === 'edicion' ? (
-            <TableroPipeline area="edit" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
+            <TableroPipeline area="edit" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} />
           ) : view === 'diseno' ? (
-            <TableroPipeline area="diseno" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} />
+            <TableroPipeline area="diseno" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} />
           ) : view === 'edicion-legacy' ? (
             <TableroEdicion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} />
           ) : view === 'diseno-legacy' ? (

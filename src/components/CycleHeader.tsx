@@ -12,6 +12,10 @@ type Props = {
   piezasByLoop?: Map<string, Pieza[]>
   /** Ciclo activo (el del CycleSelector). Necesario para mirar el subset de piezas. */
   cicloActual?: string
+  /** Map<cliente_id, count> de deudas pendientes ASIGNADAS al ciclo actual.
+   *  Un cliente con deudas pendientes asignadas NO se cuenta como "completado",
+   *  aunque sus piezas estén todas terminadas — el ciclo no cierra hasta saldarlas. */
+  deudasPendientesByCliente?: Map<number, number>
 }
 
 // Estados que indican "deployment / cierre de ciclo"
@@ -38,21 +42,28 @@ function defaultCycleLabel(): string {
   return MONTH_LABELS_ES[d.getMonth()]
 }
 
-export default function CycleHeader({ clientes, cycleLabel, piezasByLoop, cicloActual }: Props) {
+export default function CycleHeader({ clientes, cycleLabel, piezasByLoop, cicloActual, deudasPendientesByCliente }: Props) {
   const label = cycleLabel ?? defaultCycleLabel()
 
   const stats = useMemo(() => {
     const total = clientes.length
     // Completaron: si hay info de piezas para este ciclo, contar los clientes con TODAS sus piezas
-    // del ciclo en estado terminal. Sino, fallback al criterio legacy (cliente.estado).
-    let completaron: number
+    // del ciclo en estado terminal Y SIN deudas pendientes asignadas al ciclo.
+    // Sino, fallback al criterio legacy (cliente.estado).
+    let completaron = 0
+    let bloqueadosPorDeuda = 0
     if (piezasByLoop && cicloActual) {
-      completaron = clientes.filter(c => {
+      for (const c of clientes) {
         const piezas = piezasByLoop.get(`${c.id}::${cicloActual}`) ?? []
-        if (piezas.length > 0) return loopEstaCompletado(piezas)
-        // Sin piezas en este ciclo → caer al criterio legacy
-        return c.estado === ESTADO_CIERRE || c.estado === ESTADO_CIERRE_LEGACY
-      }).length
+        const piezasOk = piezas.length > 0
+          ? loopEstaCompletado(piezas)
+          : (c.estado === ESTADO_CIERRE || c.estado === ESTADO_CIERRE_LEGACY)
+        if (!piezasOk) continue
+        // Gate de deudas: si tiene deudas pendientes asignadas al ciclo, NO completa.
+        const debe = deudasPendientesByCliente?.get(c.id) ?? 0
+        if (debe > 0) { bloqueadosPorDeuda++; continue }
+        completaron++
+      }
     } else {
       completaron = clientes.filter(c => c.estado === ESTADO_CIERRE || c.estado === ESTADO_CIERRE_LEGACY).length
     }
@@ -60,8 +71,8 @@ export default function CycleHeader({ clientes, cycleLabel, piezasByLoop, cicloA
     const enProduccion = total - enDeployment
     const pct = total > 0 ? Math.round((completaron / total) * 100) : 0
     const onboarding = clientes.filter(c => c.is_onboarding).length
-    return { total, completaron, enProduccion, enDeployment, pct, onboarding }
-  }, [clientes, piezasByLoop, cicloActual])
+    return { total, completaron, enProduccion, enDeployment, pct, onboarding, bloqueadosPorDeuda }
+  }, [clientes, piezasByLoop, cicloActual, deudasPendientesByCliente])
 
   return (
     <div style={{
@@ -120,7 +131,19 @@ export default function CycleHeader({ clientes, cycleLabel, piezasByLoop, cicloA
         {stats.onboarding > 0 && (
           <Stat label="Onboarding" value={stats.onboarding} icon="fa-handshake" color="#8965e0" />
         )}
+        {stats.bloqueadosPorDeuda > 0 && (
+          <Stat label="Bloq. x deuda" value={stats.bloqueadosPorDeuda} icon="fa-lock" color="#f5365c" />
+        )}
       </div>
+      {stats.bloqueadosPorDeuda > 0 && (
+        <div style={{
+          marginTop: 10, padding: '8px 12px', borderRadius: 8,
+          background: 'rgba(245,54,92,.08)', border: '1px solid rgba(245,54,92,.30)',
+          fontSize: 11, color: '#f5365c',
+        }}>
+          🔒 <strong>{stats.bloqueadosPorDeuda} cliente{stats.bloqueadosPorDeuda > 1 ? 's' : ''}</strong> con piezas terminadas pero el ciclo no cierra — tiene deudas pendientes asignadas a este ciclo.
+        </div>
+      )}
     </div>
   )
 }

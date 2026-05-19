@@ -677,6 +677,9 @@ export type DeudaContenido = {
   cantidad_portadas: number | null
   cantidad_carrouseles: number | null
   cantidad_historias: number | null
+  /** Ciclo donde se debe cubrir esta deuda. Si tiene valor, bloquea el cierre
+   *  de ese ciclo hasta que la deuda se salde. Default: próximo ciclo al origen. */
+  ciclo_asignado: string | null
   motivo: string | null
   estado: DeudaContenidoEstado
   origen: DeudaContenidoOrigen
