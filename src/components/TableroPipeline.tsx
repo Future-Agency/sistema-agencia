@@ -674,6 +674,55 @@ export default function TableroPipeline({
     }
   }, [loadPiezas])
 
+  // Eliminar el ciclo completo del cliente: piezas + recursos del ciclo + notas + logs.
+  // NO borra deudas — siguen siendo útiles aunque el ciclo se elimine.
+  // Requiere tipear "ELIMINAR" para confirmar (operación destructiva).
+  const eliminarLoop = useCallback(async (batch: LoopBatch) => {
+    const respuesta = window.prompt(
+      `⚠ Vas a ELIMINAR todo el ciclo ${cicloMesLabel(batch.cicloMes)} para ${batch.cliente.nombre}.\n\n` +
+      `Se borra:\n` +
+      `• TODAS las piezas del ciclo (videos, portadas, carrouseles, historias)\n` +
+      `• Recursos del ciclo (drives, links, fechas, comentarios)\n` +
+      `• Notas del ciclo de TODAS las áreas\n` +
+      `• Logs de estados del ciclo\n\n` +
+      `NO se borran las deudas — siguen activas.\n\n` +
+      `Para confirmar, escribí exactamente: ELIMINAR`
+    )
+    if (respuesta !== 'ELIMINAR') {
+      if (respuesta !== null) setToast({ msg: 'Cancelado — el texto no coincidía', type: 'err' })
+      return
+    }
+    setSavingKey(batch.key)
+    try {
+      const filtros = { cliente_id: batch.cliente.id, ciclo_mes: batch.cicloMes }
+      const results = await Promise.all([
+        supabase.from('piezas').delete().match(filtros),
+        supabase.from('cliente_ciclo_recursos').delete().match(filtros),
+        supabase.from('pipeline_notas').delete().match(filtros),
+        supabase.from('estado_log').delete().match(filtros),
+      ])
+      const firstErr = results.find(r => r.error)?.error
+      if (firstErr) {
+        setSavingKey(null)
+        setToast({ msg: `Error parcial: ${firstErr.message}`, type: 'err' })
+        await loadPiezas()
+        return
+      }
+    } catch (err) {
+      console.warn('[eliminarLoop]', err)
+    }
+    setSavingKey(null)
+    setToast({
+      msg: `🗑 ${batch.cliente.nombre} · ${cicloMesLabel(batch.cicloMes).split(' ')[0]} eliminado`,
+      type: 'ok',
+    })
+    await loadPiezas()
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('estado-loop-changed'))
+      window.dispatchEvent(new Event('clientes-refresh'))
+    }
+  }, [loadPiezas])
+
   const totalBatches = visibleBatches.length
   const aprobadosCount = useMemo(
     () => visibleBatches.filter(b => b.total > 0 && b.aprobadas === b.total).length,
@@ -1069,6 +1118,26 @@ export default function TableroPipeline({
                                                     {cicloMesLabel(c)}
                                                   </button>
                                                 ))}
+                                                {/* Separator + item destructivo "Eliminar loop" */}
+                                                <div style={{ height: 1, background: '#2a2a40', margin: '4px 0' }} />
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setCycleMenuOpenForKey(null)
+                                                    eliminarLoop(batch)
+                                                  }}
+                                                  style={{
+                                                    width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                                                    padding: '6px 8px', borderRadius: 4,
+                                                    background: 'transparent', border: 'none',
+                                                    color: '#f5365c', fontSize: 11, fontWeight: 600,
+                                                    cursor: 'pointer', textAlign: 'left' as const,
+                                                  }}
+                                                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(245,54,92,.10)')}
+                                                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                >
+                                                  🗑 Eliminar este loop
+                                                </button>
                                               </div>
                                             </>
                                           )}
