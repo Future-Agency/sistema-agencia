@@ -439,25 +439,59 @@ export default function TableroPipeline({
       if (eRec) return { ok: false, error: `Estado guardado, pero recursos no: ${eRec.message}` }
 
       // ============ B3: Auto-generación de deuda al cerrar SUBIDA ============
-      // Si la cantidad de contenidos subidos < lo pactado en el plan del cliente,
-      // creamos una deuda automática "auto_subida" para tracking.
-      if (area === 'subida' && closeData.preflightFields?.cantidad_contenidos_subidos) {
+      // Contamos piezas PUBLICADAS del cliente×ciclo POR TIPO y comparamos con el plan
+      // del cliente. Si falta en algún tipo, generamos una deuda con desglose.
+      if (area === 'subida') {
         try {
-          const subidos = Number(closeData.preflightFields.cantidad_contenidos_subidos)
           const c = batch.cliente as Cliente & { plan_videos?: number; plan_portadas?: number; plan_carrouseles?: number; plan_historias?: number }
-          const pactado = (c.plan_videos ?? 0) + (c.plan_portadas ?? 0) + (c.plan_carrouseles ?? 0) + (c.plan_historias ?? 0)
-          if (pactado > 0 && Number.isFinite(subidos) && subidos < pactado) {
-            const falta = pactado - subidos
-            await supabase.from('deudas_contenido').insert({
-              agencia_id: agenciaId,
-              cliente_id: batch.cliente.id,
-              ciclo_origen: batch.cicloMes,
-              cantidad: falta,
-              motivo: `Faltaron ${falta} contenidos vs lo pactado (${subidos}/${pactado})`,
-              origen: 'auto_subida',
-              estado: 'pendiente',
-              creado_por: currentUser.name,
-            })
+          const planByTipo = {
+            video:     c.plan_videos ?? 0,
+            portada:   c.plan_portadas ?? 0,
+            carrousel: c.plan_carrouseles ?? 0,
+            historia:  c.plan_historias ?? 0,
+          }
+          const totalPactado = Object.values(planByTipo).reduce((s, n) => s + n, 0)
+          if (totalPactado > 0) {
+            // Contar publicadas por tipo (incluye el batch actual que recién pasó a PUBLICADO)
+            const { data: pubRows } = await supabase
+              .from('piezas')
+              .select('tipo')
+              .eq('agencia_id', agenciaId)
+              .eq('cliente_id', batch.cliente.id)
+              .eq('ciclo_mes', batch.cicloMes)
+              .eq('estado_subida', 'PUBLICADO')
+            const publicadasByTipo: Record<string, number> = { video: 0, portada: 0, carrousel: 0, historia: 0 }
+            for (const r of pubRows ?? []) {
+              const t = (r as { tipo: string }).tipo
+              if (t in publicadasByTipo) publicadasByTipo[t]++
+            }
+            // Calcular faltantes por tipo (clamp >=0 — si subimos de más, no se cuenta como deuda neg aquí)
+            const faltaVideos      = Math.max(0, planByTipo.video     - publicadasByTipo.video)
+            const faltaPortadas    = Math.max(0, planByTipo.portada   - publicadasByTipo.portada)
+            const faltaCarrouseles = Math.max(0, planByTipo.carrousel - publicadasByTipo.carrousel)
+            const faltaHistorias   = Math.max(0, planByTipo.historia  - publicadasByTipo.historia)
+            const totalFalta = faltaVideos + faltaPortadas + faltaCarrouseles + faltaHistorias
+            if (totalFalta > 0) {
+              const partes: string[] = []
+              if (faltaVideos > 0)      partes.push(`${faltaVideos} reels`)
+              if (faltaPortadas > 0)    partes.push(`${faltaPortadas} portadas`)
+              if (faltaCarrouseles > 0) partes.push(`${faltaCarrouseles} carrouseles`)
+              if (faltaHistorias > 0)   partes.push(`${faltaHistorias} historias`)
+              await supabase.from('deudas_contenido').insert({
+                agencia_id: agenciaId,
+                cliente_id: batch.cliente.id,
+                ciclo_origen: batch.cicloMes,
+                cantidad: totalFalta,
+                cantidad_videos:      faltaVideos      > 0 ? faltaVideos      : null,
+                cantidad_portadas:    faltaPortadas    > 0 ? faltaPortadas    : null,
+                cantidad_carrouseles: faltaCarrouseles > 0 ? faltaCarrouseles : null,
+                cantidad_historias:   faltaHistorias   > 0 ? faltaHistorias   : null,
+                motivo: `Faltaron: ${partes.join(', ')} (vs pactado del ciclo)`,
+                origen: 'auto_subida',
+                estado: 'pendiente',
+                creado_por: currentUser.name,
+              })
+            }
           }
         } catch (err) {
           console.warn('[deuda auto-subida]', err)

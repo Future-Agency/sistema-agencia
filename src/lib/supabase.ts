@@ -671,7 +671,12 @@ export type DeudaContenido = {
   agencia_id: string
   cliente_id: number
   ciclo_origen: string
-  cantidad: number  // positivo = debemos; negativo = saldo a favor
+  cantidad: number  // total signed = suma de las cantidades por tipo (positivo = debemos; negativo = saldo a favor)
+  // Desglose por tipo (opcional; legacy deudas pueden tener todos en null)
+  cantidad_videos: number | null
+  cantidad_portadas: number | null
+  cantidad_carrouseles: number | null
+  cantidad_historias: number | null
   motivo: string | null
   estado: DeudaContenidoEstado
   origen: DeudaContenidoOrigen
