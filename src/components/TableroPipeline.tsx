@@ -31,6 +31,9 @@ type Props = {
   /** Si se pasa, sólo carga piezas de ese ciclo. Sin esto, la pipeline mostraría
    *  todos los ciclos a la vez (clientes duplicados si hay piezas en varios meses). */
   cycleFilter?: CicloMes | null
+  /** Map<cliente_id, count> de deudas pendientes asignadas al ciclo activo.
+   *  Cards de clientes con deudas > 0 muestran un badge de alerta. */
+  deudasPendientesByCliente?: Map<number, number>
 }
 
 type LoopBatch = {
@@ -144,7 +147,7 @@ function dominantStateInArea(piezas: Pieza[], area: UserArea, areaStates: AreaSt
 
 export default function TableroPipeline({
   area, agenciaId, currentUser, clientes, owners, onSelectCliente, ownerFilter,
-  visibleStateIds, titleOverride, cycleFilter,
+  visibleStateIds, titleOverride, cycleFilter, deudasPendientesByCliente,
 }: Props) {
   const def = AREA_DEFS[area]
   // Lista completa de estados (para lógica de transiciones / dominantState).
@@ -481,6 +484,7 @@ export default function TableroPipeline({
                 agencia_id: agenciaId,
                 cliente_id: batch.cliente.id,
                 ciclo_origen: batch.cicloMes,
+                ciclo_asignado: nextCicloMes(batch.cicloMes), // por default cae al ciclo siguiente
                 cantidad: totalFalta,
                 cantidad_videos:      faltaVideos      > 0 ? faltaVideos      : null,
                 cantidad_portadas:    faltaPortadas    > 0 ? faltaPortadas    : null,
@@ -849,6 +853,21 @@ export default function TableroPipeline({
                                     {batch.cliente.nombre}
                                   </div>
 
+                                  {/* Badge "🔒 X deudas pendientes" — gate: este cliente tiene deudas asignadas al ciclo */}
+                                  {(deudasPendientesByCliente?.get(batch.cliente.id) ?? 0) > 0 && (
+                                    <div
+                                      title="Hay deudas pendientes asignadas a este ciclo — el ciclo no cierra hasta saldarlas. Vé a Deudas para gestionar."
+                                      style={{
+                                        fontSize: 9, color: '#f5365c',
+                                        background: 'rgba(245,54,92,.10)',
+                                        border: '1px solid rgba(245,54,92,.30)',
+                                        borderRadius: 3, padding: '2px 5px',
+                                        marginBottom: 4, display: 'inline-block',
+                                        textTransform: 'uppercase' as const, letterSpacing: 0.3, fontWeight: 700,
+                                      }}>
+                                      🔒 {deudasPendientesByCliente!.get(batch.cliente.id)} deuda{(deudasPendientesByCliente!.get(batch.cliente.id) ?? 0) > 1 ? 's' : ''} pendiente{(deudasPendientesByCliente!.get(batch.cliente.id) ?? 0) > 1 ? 's' : ''}
+                                    </div>
+                                  )}
                                   {/* Badge "🔗 también en X" — el mismo loop tiene piezas activas en otras áreas (flujo paralelo) */}
                                   {batch.otherActiveAreas.length > 0 && (
                                     <div

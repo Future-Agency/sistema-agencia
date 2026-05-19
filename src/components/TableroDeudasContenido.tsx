@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase, type Cliente, type DeudaContenido, type DeudaContenidoEstado } from '@/lib/supabase'
 import type { CurrentUser } from '@/lib/users'
-import { cicloMesLabel } from '@/lib/cycles'
+import { cicloMesLabel, nextCicloMes, prevCicloMes, currentCicloMes } from '@/lib/cycles'
 
 type Props = {
   agenciaId: string
@@ -205,8 +205,13 @@ export default function TableroDeudasContenido({ agenciaId, currentUser, cliente
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 700 }}>{c?.nombre ?? `Cliente #${d.cliente_id}`}</div>
                   <div style={{ fontSize: 11, color: '#6a6a80', marginTop: 2 }}>
-                    Ciclo origen: <strong style={{ color: '#a0a0b8', textTransform: 'capitalize' as const }}>{cicloMesLabel(d.ciclo_origen)}</strong>
-                    {' · '}origen: <span style={{ color: d.origen === 'auto_subida' ? '#5e72e4' : '#a0a0b8' }}>{d.origen === 'auto_subida' ? 'auto (subida)' : 'manual'}</span>
+                    Origen: <strong style={{ color: '#a0a0b8', textTransform: 'capitalize' as const }}>{cicloMesLabel(d.ciclo_origen)}</strong>
+                    {d.ciclo_asignado ? (
+                      <> · Asignada a: <strong style={{ color: '#f5a623', textTransform: 'capitalize' as const }}>{cicloMesLabel(d.ciclo_asignado)}</strong></>
+                    ) : (
+                      <> · <span style={{ color: '#6a6a80', fontStyle: 'italic' as const }}>sin asignar</span></>
+                    )}
+                    {' · '}<span style={{ color: d.origen === 'auto_subida' ? '#5e72e4' : '#a0a0b8' }}>{d.origen === 'auto_subida' ? 'auto' : 'manual'}</span>
                   </div>
                   {/* Desglose por tipo (si está cargado) */}
                   {(() => {
@@ -286,7 +291,8 @@ function DeudaModal({ agenciaId, currentUser, clientes, item, onClose, onSaved }
   agenciaId: string; currentUser: CurrentUser; clientes: Cliente[]; item: Partial<DeudaContenido>; onClose: () => void; onSaved: () => void
 }) {
   const [clienteId, setClienteId] = useState<number | ''>(item.cliente_id ?? '')
-  const [cicloOrigen, setCicloOrigen] = useState(item.ciclo_origen ?? '')
+  const [cicloOrigen, setCicloOrigen] = useState(item.ciclo_origen ?? currentCicloMes())
+  const [cicloAsignado, setCicloAsignado] = useState(item.ciclo_asignado ?? '')
   // 4 cantidades por tipo (siempre positivas en el input; el signo se aplica con el toggle)
   const [cantVideos, setCantVideos]           = useState(Math.abs(item.cantidad_videos ?? 0))
   const [cantPortadas, setCantPortadas]       = useState(Math.abs(item.cantidad_portadas ?? 0))
@@ -322,6 +328,7 @@ function DeudaModal({ agenciaId, currentUser, clientes, item, onClose, onSaved }
       cantidad_portadas:    cantPortadas > 0    ? cantPortadas * mult    : null,
       cantidad_carrouseles: cantCarrouseles > 0 ? cantCarrouseles * mult : null,
       cantidad_historias:   cantHistorias > 0   ? cantHistorias * mult   : null,
+      ciclo_asignado: cicloAsignado.trim() || null,
       motivo: motivo.trim() || null,
       notas: notas.trim() || null,
       origen: item.origen ?? 'manual',
@@ -348,17 +355,31 @@ function DeudaModal({ agenciaId, currentUser, clientes, item, onClose, onSaved }
             {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
         </Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
           <Field label="Ciclo origen">
             <input value={cicloOrigen} onChange={e => setCicloOrigen(e.target.value)} placeholder="mayo-2026" style={inputStyle} />
           </Field>
+          <Field label="Asignar a ciclo">
+            <input value={cicloAsignado} onChange={e => setCicloAsignado(e.target.value)}
+              placeholder={cicloOrigen ? nextCicloMes(cicloOrigen) : 'junio-2026'}
+              style={inputStyle} />
+          </Field>
           <Field label="Tipo">
             <select value={signo} onChange={e => setSigno(e.target.value as '+' | '-')} style={inputStyle}>
-              <option value="+">+ Debemos al cliente</option>
-              <option value="-">− Saldo a favor</option>
+              <option value="+">+ Debemos</option>
+              <option value="-">− A favor</option>
             </select>
           </Field>
         </div>
+        {!cicloAsignado.trim() && cicloOrigen.trim() && (
+          <div style={{ fontSize: 11, color: '#f5a623', marginTop: -6, marginBottom: 8 }}>
+            ⚠ Sin ciclo asignado, la deuda queda flotante (no bloquea ningún cierre). Sugerido: <button
+              type="button"
+              onClick={() => setCicloAsignado(nextCicloMes(cicloOrigen))}
+              style={{ background: 'transparent', border: 'none', color: '#5e72e4', cursor: 'pointer', fontWeight: 600, padding: 0, textDecoration: 'underline' as const }}
+            >{nextCicloMes(cicloOrigen)}</button>
+          </div>
+        )}
 
         <Field label="Cantidades por tipo">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
