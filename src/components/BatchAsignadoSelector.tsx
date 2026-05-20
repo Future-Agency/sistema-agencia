@@ -34,12 +34,19 @@ export default function BatchAsignadoSelector({ area, piezasIds, asignadoIdActua
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const opciones = useMemo(() => {
-    if (!rol) return []
-    return equipo.filter(e => e.rol === rol && e.activo)
+  // Miembros del rol "correcto" primero, después el resto del equipo.
+  // Permite asignar a cualquier persona aunque su rol nominal no coincida con el área.
+  const { recomendados, otros } = useMemo(() => {
+    const activos = equipo.filter(e => e.activo)
+    if (!rol) return { recomendados: [] as Equipo[], otros: activos }
+    return {
+      recomendados: activos.filter(e => e.rol === rol),
+      otros: activos.filter(e => e.rol !== rol),
+    }
   }, [equipo, rol])
+  const totalOpciones = recomendados.length + otros.length
 
-  if (!field || !rol || opciones.length === 0) return null  // área no asignable
+  if (!field || !rol || totalOpciones === 0) return null  // área no asignable o sin equipo
 
   const asignado = asignadoIdActual ? equipo.find(e => e.id === asignadoIdActual) ?? null : null
 
@@ -111,25 +118,21 @@ export default function BatchAsignadoSelector({ area, piezasIds, asignadoIdActua
                 ✕ Quitar asignación
               </button>
             )}
-            {opciones.map(opt => {
-              const isCurrent = opt.id === asignadoIdActual
-              return (
-                <button
-                  key={opt.id}
-                  onClick={(e) => { e.stopPropagation(); asignar(opt.id) }}
-                  disabled={isCurrent}
-                  style={{ ...menuItemStyle(opt.color), opacity: isCurrent ? 0.5 : 1 }}
-                >
-                  <span style={{
-                    width: 16, height: 16, borderRadius: '50%',
-                    background: opt.color, color: '#0a0a0f',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 9, fontWeight: 800, marginRight: 6,
-                  }}>{opt.nombre[0]?.toUpperCase()}</span>
-                  {opt.nombre}{isCurrent && ' ✓'}
-                </button>
-              )
-            })}
+            {recomendados.length > 0 && (
+              <div style={{ padding: '4px 8px 2px', fontSize: 8, color: '#3a3a55', textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
+                Rol {rol}
+              </div>
+            )}
+            {recomendados.map(opt => renderOpt(opt, opt.id === asignadoIdActual, asignar))}
+            {otros.length > 0 && (
+              <>
+                <div style={{ height: 1, background: '#2a2a40', margin: '4px 0' }} />
+                <div style={{ padding: '4px 8px 2px', fontSize: 8, color: '#3a3a55', textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
+                  Otros miembros
+                </div>
+                {otros.map(opt => renderOpt(opt, opt.id === asignadoIdActual, asignar))}
+              </>
+            )}
           </div>
         </>
       )}
@@ -145,4 +148,24 @@ function menuItemStyle(color: string): React.CSSProperties {
     color: '#e8e8f0', fontSize: 11, fontWeight: 600,
     cursor: 'pointer', textAlign: 'left' as const,
   }
+}
+
+function renderOpt(opt: Equipo, isCurrent: boolean, asignar: (id: string | null) => void) {
+  return (
+    <button
+      key={opt.id}
+      onClick={(e) => { e.stopPropagation(); asignar(opt.id) }}
+      disabled={isCurrent}
+      style={{ ...menuItemStyle(opt.color), opacity: isCurrent ? 0.5 : 1 }}
+    >
+      <span style={{
+        width: 16, height: 16, borderRadius: '50%',
+        background: opt.color, color: '#0a0a0f',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 9, fontWeight: 800, marginRight: 6,
+      }}>{opt.nombre[0]?.toUpperCase()}</span>
+      {opt.nombre}{isCurrent && ' ✓'}
+      <span style={{ marginLeft: 'auto', fontSize: 8, color: '#6a6a80', textTransform: 'uppercase' as const }}>{opt.rol}</span>
+    </button>
+  )
 }
