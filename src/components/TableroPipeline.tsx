@@ -574,6 +574,61 @@ export default function TableroPipeline({
       return
     }
 
+    // 0.b. Salida de PENDIENTE DE INFORMACIÓN → si NO es "no aplica", requiere link del documento.
+    if (area === 'copys' && batch.dominantState === ESTADO_PENDIENTE_INFO_LABEL) {
+      const { data: rec } = await supabase.from('cliente_ciclo_recursos')
+        .select('pendiente_info_no_aplica, pendiente_info_link')
+        .eq('cliente_id', batch.cliente.id).eq('ciclo_mes', batch.cicloMes).maybeSingle()
+      const noAplica = !!rec?.pendiente_info_no_aplica
+      const existingLink = (rec?.pendiente_info_link ?? '').trim()
+      if (!noAplica && !existingLink) {
+        const link = window.prompt(
+          `Para salir de PENDIENTE DE INFORMACIÓN se necesita el link del documento con la info que estabas esperando.\n\nPegá el link (https://...):\n\nO cancelá y marcá NO APLICA en la card si este ciclo no aplica.`
+        )
+        if (!link) return
+        const url = link.trim()
+        if (!url.startsWith('http')) {
+          setToast({ msg: 'El link tiene que empezar con http(s)://', type: 'err' })
+          return
+        }
+        await supabase.from('cliente_ciclo_recursos').upsert({
+          agencia_id: agenciaId,
+          cliente_id: batch.cliente.id,
+          ciclo_mes: batch.cicloMes,
+          pendiente_info_link: url,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'cliente_id,ciclo_mes' })
+      }
+      // No return — sigue al flujo normal de transición
+    }
+
+    // 0.c. Entrada a CORRECCIÓN → requiere link de las correcciones.
+    if (area === 'copys' && toState === 'CORRECCIÓN') {
+      const { data: rec } = await supabase.from('cliente_ciclo_recursos')
+        .select('correcciones_link')
+        .eq('cliente_id', batch.cliente.id).eq('ciclo_mes', batch.cicloMes).maybeSingle()
+      const existingLink = (rec?.correcciones_link ?? '').trim()
+      const link = existingLink || window.prompt(
+        `Para mandar a CORRECCIÓN se necesita el link al documento con las correcciones.\n\nPegá el link (https://...):`
+      )
+      if (!link) return
+      const url = link.trim()
+      if (!url.startsWith('http')) {
+        setToast({ msg: 'El link tiene que empezar con http(s)://', type: 'err' })
+        return
+      }
+      if (url !== existingLink) {
+        await supabase.from('cliente_ciclo_recursos').upsert({
+          agencia_id: agenciaId,
+          cliente_id: batch.cliente.id,
+          ciclo_mes: batch.cicloMes,
+          correcciones_link: url,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'cliente_id,ciclo_mes' })
+      }
+      // sigue al flujo normal
+    }
+
     // 1. Cierre de área → modal con link + comment + preflight
     const cfg = AREA_CLOSE_CONFIG[area]
     if (toState === cfg.closeState) {

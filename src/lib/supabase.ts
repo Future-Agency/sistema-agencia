@@ -137,6 +137,9 @@ export type ClienteCicloRecursos = {
   pendiente_info_motivos: string[] | null
   pendiente_info_otro: string | null
   pendiente_info_no_aplica: boolean | null
+  pendiente_info_link: string | null
+  // CORRECCIÓN en Copys (link requerido)
+  correcciones_link: string | null
   created_at: string
   updated_at: string
 }
