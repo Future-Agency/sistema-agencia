@@ -38,14 +38,15 @@ export type AreaDef = {
 }
 
 // ============== COPYS ==============
-// REGULAR_STATES (6)
+// REGULAR_STATES (7)
 const COPYS_REGULAR: AreaState[] = [
   { id: 0, label: 'PENDIENTE DE INFORMACIÓN', short: 'PEND.INFO', icon: '⏸️', isGate: true, color: '#f5a623' },
   { id: 1, label: 'MÉTRICAS',           short: 'MÉT',    icon: '📊', isGate: true },
   { id: 2, label: 'POR HACER SCRIPTS',  short: 'SCRIPT', icon: '✍️' },
-  { id: 3, label: 'CORRECCIÓN FRAN',    short: 'C.FRAN', icon: '🔍' },
-  { id: 4, label: 'CORRECCIÓN CLIENTE', short: 'C.CLI',  icon: '👁' },
-  { id: 5, label: 'LISTO PARA GRABAR',  short: 'LISTO',  icon: '🎬' },
+  { id: 3, label: 'REVISIÓN FRAN',      short: 'R.FRAN', icon: '🔍' },
+  { id: 4, label: 'REVISIÓN CLIENTE',   short: 'R.CLI',  icon: '👁' },
+  { id: 5, label: 'CORRECCIÓN',         short: 'CORR',   icon: '🔧', color: '#f5365c' },
+  { id: 6, label: 'LISTO PARA GRABAR',  short: 'LISTO',  icon: '🎬' },
 ]
 
 const COPYS_ONBOARDING: AreaState[] = [
@@ -54,9 +55,10 @@ const COPYS_ONBOARDING: AreaState[] = [
   { id: 2, label: 'ESTRATEGIA',         icon: '🧠' },
   { id: 3, label: 'MÉTRICAS',           icon: '📊' },
   { id: 4, label: 'POR HACER SCRIPTS',  icon: '✍️' },
-  { id: 5, label: 'CORRECCIÓN FRAN',    icon: '🔍' },
-  { id: 6, label: 'CORRECCIÓN CLIENTE', icon: '👁' },
-  { id: 7, label: 'LISTO PARA GRABAR',  icon: '🎬' },
+  { id: 5, label: 'REVISIÓN FRAN',      icon: '🔍' },
+  { id: 6, label: 'REVISIÓN CLIENTE',   icon: '👁' },
+  { id: 7, label: 'CORRECCIÓN',         icon: '🔧', color: '#f5365c' },
+  { id: 8, label: 'LISTO PARA GRABAR',  icon: '🎬' },
 ]
 
 // Motivos canónicos del estado PENDIENTE DE INFORMACIÓN.
@@ -132,10 +134,10 @@ export const AREA_DEFS: Record<UserArea, AreaDef> = {
     primaryColor: '#5e72e4',
     states: COPYS_REGULAR,
     onboardingStates: COPYS_ONBOARDING,
-    correctionStateId: 3, // CORRECCIÓN FRAN (shifted +1 por el nuevo PENDIENTE DE INFORMACIÓN)
-    reviewInternalStateId: 3, // CORRECCIÓN FRAN actúa como gate
-    reviewClientStateId: 4, // CORRECCIÓN CLIENTE
-    approvedStateId: 5,
+    correctionStateId: 5, // CORRECCIÓN (estado dedicado, pide link de correcciones)
+    reviewInternalStateId: 3, // REVISIÓN FRAN actúa como gate de revisión interna
+    reviewClientStateId: 4, // REVISIÓN CLIENTE
+    approvedStateId: 6, // LISTO PARA GRABAR
     clienteColumn: 'estado_copys',
   },
   grab: {
