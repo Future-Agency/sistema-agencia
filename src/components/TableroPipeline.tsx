@@ -4,6 +4,8 @@ import { flushSync } from 'react-dom'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import { supabase, type Cliente, type Owner, type Pieza, type PiezaTipo } from '@/lib/supabase'
 import type { CurrentUser, UserArea } from '@/lib/users'
+import type { Equipo } from '@/lib/supabase'
+import BatchAsignadoSelector, { AREA_TO_PIEZA_FIELD } from './BatchAsignadoSelector'
 import { AREA_DEFS, type AreaState, ESTADO_PENDIENTE_INFO_LABEL } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO } from '@/lib/piezas'
 import { cicloMesLabel, parseCicloMes, currentCicloMes, prevCicloMes, nextCicloMes, type CicloMes } from '@/lib/cycles'
@@ -34,6 +36,8 @@ type Props = {
   /** Map<cliente_id, count> de deudas pendientes asignadas al ciclo activo.
    *  Cards de clientes con deudas > 0 muestran un badge de alerta. */
   deudasPendientesByCliente?: Map<number, number>
+  /** Miembros del equipo (para selector de asignación en cards). */
+  equipo?: Equipo[]
 }
 
 type LoopBatch = {
@@ -147,7 +151,7 @@ function dominantStateInArea(piezas: Pieza[], area: UserArea, areaStates: AreaSt
 
 export default function TableroPipeline({
   area, agenciaId, currentUser, clientes, owners, onSelectCliente, ownerFilter,
-  visibleStateIds, titleOverride, cycleFilter, deudasPendientesByCliente,
+  visibleStateIds, titleOverride, cycleFilter, deudasPendientesByCliente, equipo,
 }: Props) {
   const def = AREA_DEFS[area]
   // Lista completa de estados (para lógica de transiciones / dominantState).
@@ -861,6 +865,11 @@ export default function TableroPipeline({
                           const owner = batch.cliente.owner_id ? ownerById.get(batch.cliente.owner_id) : null
                           const isSaving = savingKey === batch.key
                           const pct = batch.total > 0 ? Math.round((batch.aprobadas / batch.total) * 100) : 0
+                          // Asignado dominante del batch para esta área (la primera pieza con valor)
+                          const asignadoField = AREA_TO_PIEZA_FIELD[area]
+                          const asignadoIdActual: string | null = asignadoField
+                            ? ((batch.piezas.find(p => (p as Record<string, unknown>)[asignadoField as string])?.[asignadoField] as string | null) ?? null)
+                            : null
 
                           return (
                             <Draggable key={batch.key} draggableId={batch.key} index={idx}>
@@ -936,8 +945,8 @@ export default function TableroPipeline({
                                     </div>
                                   )}
 
-                                  {/* Owner */}
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                  {/* Owner + Asignado del área */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' as const }}>
                                     {owner && (
                                       <span style={{
                                         width: 16, height: 16, borderRadius: 4,
@@ -947,8 +956,19 @@ export default function TableroPipeline({
                                       }}>{owner.nombre_corto[0]}</span>
                                     )}
                                     <span style={{ color: '#a0a0b8', fontSize: 10 }}>
-                                      {owner?.nombre_corto || 'Sin asignar'}
+                                      {owner?.nombre_corto || 'Sin owner'}
                                     </span>
+                                    {/* Selector de persona asignada para esta área del batch */}
+                                    {equipo && AREA_TO_PIEZA_FIELD[area] && (
+                                      <BatchAsignadoSelector
+                                        area={area}
+                                        piezasIds={batch.piezas.map(p => p.id)}
+                                        asignadoIdActual={asignadoIdActual}
+                                        equipo={equipo}
+                                        disabled={isSaving}
+                                        onAsignado={() => fetchPiezas()}
+                                      />
+                                    )}
                                   </div>
 
                                   {/* Progress bar + advance button */}

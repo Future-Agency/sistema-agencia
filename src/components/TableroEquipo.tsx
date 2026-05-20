@@ -1,177 +1,273 @@
 'use client'
-import { useMemo } from 'react'
-import { SemaforoIcon } from './ui'
-import { supabase, type Cliente, type Equipo, type Owner } from '@/lib/supabase'
-import { getEstadoStyle } from '@/lib/estados'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase, type Cliente, type Equipo, type Pieza } from '@/lib/supabase'
+import type { UserArea } from '@/lib/users'
+import { cicloMesLabel } from '@/lib/cycles'
+import { AREA_TO_PIEZA_FIELD, AREA_TO_ROL } from './BatchAsignadoSelector'
 
-type Props = { clientes: Cliente[]; equipo: Equipo[]; owners: Owner[]; onUpdate: () => void }
-
-const ROL_SECTIONS: { rol: Equipo['rol']; label: string; icon: string; color: string }[] = [
-  { rol: 'copy', label: 'COPY', icon: 'fa-pen-fancy', color: '#8965e0' },
-  { rol: 'editor', label: 'EDITORES', icon: 'fa-film', color: '#f5a623' },
-  { rol: 'diseñador', label: 'DISEÑO', icon: 'fa-palette', color: '#f5365c' },
-  { rol: 'cm', label: 'CM', icon: 'fa-calendar', color: '#00d97e' },
-]
-
-function daysInState(c: Cliente): number | null {
-  if (!c.estado_changed_at) return null
-  return Math.floor((Date.now() - new Date(c.estado_changed_at).getTime()) / 86400000)
+type Props = {
+  agenciaId: string
+  clientes: Cliente[]
+  equipo: Equipo[]
+  cicloActual?: string  // para filtrar tareas del ciclo activo
 }
 
-function loadColor(count: number): { color: string; bg: string; label: string } {
-  if (count === 0) return { color: '#6a6a80', bg: 'rgba(106,106,128,.1)', label: 'Disponible' }
-  if (count <= 2) return { color: '#00d97e', bg: 'rgba(0,217,126,.12)', label: 'Normal' }
-  if (count <= 4) return { color: '#f5a623', bg: 'rgba(245,166,35,.12)', label: 'Cargado' }
-  return { color: '#f5365c', bg: 'rgba(245,54,92,.12)', label: 'Sobrecargado' }
+type Tarea = {
+  cliente: Cliente
+  ciclo: string
+  area: UserArea
+  cantidadPiezas: number
 }
 
-export default function TableroEquipo({ clientes, equipo, owners, onUpdate }: Props) {
-  const assignmentMap = useMemo(() => {
-    const map = new Map<string, Cliente[]>()
-    equipo.forEach(e => {
-      const assigned = clientes.filter(c =>
-        (e.rol === 'editor' && c.editor_id === e.id) ||
-        (e.rol === 'copy' && c.copy_id === e.id) ||
-        (e.rol === 'diseñador' && c.disenador_id === e.id) ||
-        (e.rol === 'cm' && c.editor_id === e.id) // cm uses general assignment
-      )
-      map.set(e.id, assigned)
-    })
-    return map
-  }, [clientes, equipo])
+const AREAS_ASIGNABLES: UserArea[] = ['copys', 'edit', 'diseno', 'subida']
+const AREA_LABEL: Record<UserArea, { label: string; emoji: string; color: string }> = {
+  copys:    { label: 'Copys',   emoji: '✍️', color: '#5e72e4' },
+  grab:     { label: 'Grab',    emoji: '🎥', color: '#f5a623' },
+  edit:     { label: 'Edición', emoji: '✂️', color: '#fb6340' },
+  diseno:   { label: 'Diseño',  emoji: '🎨', color: '#ec4ad8' },
+  subida:   { label: 'Subida',  emoji: '🚀', color: '#00d97e' },
+  anuncios: { label: 'Anuncios', emoji: '📢', color: '#a78bfa' },
+}
 
-  // Unassigned counts per role
-  const unassigned = useMemo(() => {
-    const ongoing = clientes.filter(c => !c.is_onboarding && c.estado)
-    return {
-      copy: ongoing.filter(c => !c.copy_id).length,
-      editor: ongoing.filter(c => !c.editor_id).length,
-      diseñador: ongoing.filter(c => !c.disenador_id).length,
+export default function TableroEquipo({ agenciaId, clientes, equipo, cicloActual }: Props) {
+  const [piezas, setPiezas] = useState<Pieza[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filtroArea, setFiltroArea] = useState<UserArea | 'todas'>('todas')
+
+  const fetchPiezas = useCallback(async () => {
+    const PAGE = 1000
+    const all: Pieza[] = []
+    for (let page = 0; ; page++) {
+      let query = supabase.from('piezas').select('*')
+        .eq('agencia_id', agenciaId)
+        .range(page * PAGE, (page + 1) * PAGE - 1)
+      if (cicloActual) query = query.eq('ciclo_mes', cicloActual)
+      const { data } = await query
+      const rows = (data ?? []) as Pieza[]
+      all.push(...rows)
+      if (rows.length < PAGE) break
     }
+    setPiezas(all)
+  }, [agenciaId, cicloActual])
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    await fetchPiezas()
+    setLoading(false)
+  }, [fetchPiezas])
+
+  useEffect(() => { reload() }, [reload])
+
+  // Listener silencioso para refreshes cross-tab
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handler = () => { fetchPiezas() }
+    window.addEventListener('estado-loop-changed', handler)
+    window.addEventListener('clientes-refresh', handler)
+    return () => {
+      window.removeEventListener('estado-loop-changed', handler)
+      window.removeEventListener('clientes-refresh', handler)
+    }
+  }, [fetchPiezas])
+
+  const clienteById = useMemo(() => {
+    const m = new Map<number, Cliente>()
+    clientes.forEach(c => m.set(c.id, c))
+    return m
   }, [clientes])
 
-  async function assignCliente(clienteId: number, field: string, equipoId: string | null) {
-    await supabase.from('clientes').update({ [field]: equipoId }).eq('id', clienteId)
-    onUpdate()
-  }
+  // Por cada miembro del equipo: lista de tareas activas (cliente × ciclo × área).
+  // "Tarea activa" = al menos una pieza del cliente×ciclo×área asignada a esa persona
+  // y con estado NO terminal en esa área.
+  const tareasPorPersona = useMemo(() => {
+    const result = new Map<string, Tarea[]>()
+    for (const e of equipo) result.set(e.id, [])
+
+    for (const area of AREAS_ASIGNABLES) {
+      if (filtroArea !== 'todas' && filtroArea !== area) continue
+      const field = AREA_TO_PIEZA_FIELD[area]
+      if (!field) continue
+      const stateCol = area === 'edit' ? 'estado_edicion' : `estado_${area}`
+      // Agrupar por (persona, cliente, ciclo)
+      const buckets = new Map<string, { persona: string; cliente: number; ciclo: string; count: number }>()
+      for (const p of piezas) {
+        const personaId = (p as Record<string, unknown>)[field as string] as string | null
+        if (!personaId) continue
+        const estado = (p as Record<string, unknown>)[stateCol] as string | null
+        // Sólo cuento tareas no terminadas (sin estado o no aprobado)
+        if (estado && /^(APROBADO|LISTO PARA GRABAR|PUBLICADO|MATERIAL APROBADO|MATERIAL SUBIDO|METRICAS Y VOLVER A EMPEZAR|VOLVER A EMPEZAR)$/i.test(estado)) continue
+        const k = `${personaId}::${p.cliente_id}::${p.ciclo_mes}`
+        if (!buckets.has(k)) buckets.set(k, { persona: personaId, cliente: p.cliente_id, ciclo: p.ciclo_mes, count: 0 })
+        buckets.get(k)!.count++
+      }
+      Array.from(buckets.values()).forEach(b => {
+        const c = clienteById.get(b.cliente)
+        if (!c) return
+        if (!result.has(b.persona)) result.set(b.persona, [])
+        result.get(b.persona)!.push({ cliente: c, ciclo: b.ciclo, area, cantidadPiezas: b.count })
+      })
+    }
+    return result
+  }, [piezas, equipo, clienteById, filtroArea])
+
+  // Stats agregadas (sin asignar por área)
+  const sinAsignarPorArea = useMemo(() => {
+    const result: Partial<Record<UserArea, number>> = {}
+    for (const area of AREAS_ASIGNABLES) {
+      const field = AREA_TO_PIEZA_FIELD[area]
+      if (!field) continue
+      const stateCol = area === 'edit' ? 'estado_edicion' : `estado_${area}`
+      const batchKeys = new Set<string>()
+      for (const p of piezas) {
+        const estado = (p as Record<string, unknown>)[stateCol] as string | null
+        if (estado && /^(APROBADO|LISTO PARA GRABAR|PUBLICADO|MATERIAL APROBADO|MATERIAL SUBIDO|METRICAS Y VOLVER A EMPEZAR|VOLVER A EMPEZAR)$/i.test(estado)) continue
+        const asignado = (p as Record<string, unknown>)[field as string] as string | null
+        if (asignado) continue
+        batchKeys.add(`${p.cliente_id}::${p.ciclo_mes}`)
+      }
+      result[area] = batchKeys.size
+    }
+    return result
+  }, [piezas])
+
+  const equipoOrdenado = useMemo(() => {
+    return [...equipo].filter(e => e.activo).sort((a, b) => {
+      const ta = (tareasPorPersona.get(a.id) ?? []).length
+      const tb = (tareasPorPersona.get(b.id) ?? []).length
+      if (tb !== ta) return tb - ta
+      return a.nombre.localeCompare(b.nombre)
+    })
+  }, [equipo, tareasPorPersona])
 
   return (
     <div className="fade-in">
-      {/* Summary stats */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-        {ROL_SECTIONS.filter(r => r.rol !== 'cm').map(section => {
-          const members = equipo.filter(e => e.rol === section.rol)
-          const totalClients = members.reduce((sum, m) => sum + (assignmentMap.get(m.id)?.length || 0), 0)
-          return (
-            <div key={section.rol} className="card" style={{ flex: '1 1 200px' }}>
-              <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ width: 48, height: 48, borderRadius: 12, background: `${section.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className={`fas ${section.icon}`} style={{ fontSize: 20, color: section.color }} />
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap' as const, gap: 10 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>👥 Equipo</h2>
+          <p style={{ fontSize: 12, color: '#6a6a80', margin: 0, marginTop: 2 }}>
+            Tareas activas por persona en {cicloActual ? `el ciclo ${cicloMesLabel(cicloActual)}` : 'todos los ciclos'}.
+          </p>
+        </div>
+        {/* Filtro por área */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const }}>
+          <button onClick={() => setFiltroArea('todas')}
+            style={chipStyle(filtroArea === 'todas', '#5e72e4')}>Todas</button>
+          {AREAS_ASIGNABLES.map(a => (
+            <button key={a} onClick={() => setFiltroArea(a)}
+              style={chipStyle(filtroArea === a, AREA_LABEL[a].color)}>
+              {AREA_LABEL[a].emoji} {AREA_LABEL[a].label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Sin asignar por área */}
+      {Object.entries(sinAsignarPorArea).some(([, n]) => (n ?? 0) > 0) && (
+        <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8, background: 'rgba(245,166,35,.08)', border: '1px solid rgba(245,166,35,.30)' }}>
+          <div style={{ fontSize: 11, color: '#f5a623', fontWeight: 700, marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
+            ⚠ Batches sin asignar
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' as const }}>
+            {AREAS_ASIGNABLES.map(a => {
+              const n = sinAsignarPorArea[a] ?? 0
+              if (n === 0) return null
+              return (
+                <span key={a} style={{
+                  fontSize: 12, color: '#e8e8f0', fontWeight: 600,
+                  padding: '3px 8px', borderRadius: 5,
+                  background: 'rgba(0,0,0,.25)',
+                }}>
+                  {AREA_LABEL[a].emoji} {AREA_LABEL[a].label}: <strong style={{ color: '#f5a623' }}>{n}</strong>
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Grid de personas */}
+      {loading ? (
+        <div style={{ padding: 32, textAlign: 'center' as const, color: '#6a6a80' }}>Cargando…</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+          {equipoOrdenado.map(persona => {
+            const tareas = tareasPorPersona.get(persona.id) ?? []
+            const carga = loadColor(tareas.length)
+            return (
+              <div key={persona.id} style={{
+                background: '#12121a', border: '1px solid #2a2a40', borderRadius: 10,
+                padding: 14,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: '50%',
+                    background: persona.color, color: '#0a0a0f',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 800, fontSize: 14,
+                  }}>{persona.nombre[0]?.toUpperCase()}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#e8e8f0' }}>{persona.nombre}</div>
+                    <div style={{ fontSize: 10, color: '#6a6a80', textTransform: 'uppercase' as const, letterSpacing: 0.3 }}>
+                      {persona.rol === 'copy' ? 'Copywriter' : persona.rol === 'editor' ? 'Editor' : persona.rol === 'diseñador' ? 'Diseñador' : 'CM'}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5,
+                    background: carga.bg, color: carga.color,
+                  }}>{tareas.length} {tareas.length === 1 ? 'tarea' : 'tareas'}</span>
                 </div>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: section.color }}>{members.length}</div>
-                  <div style={{ fontSize: 11, color: '#6a6a80' }}>{section.label} — {totalClients} clientes</div>
-                </div>
-                {(unassigned as any)[section.rol] > 0 && (
-                  <div style={{ marginLeft: 'auto', fontSize: 10, color: '#f5a623', background: 'rgba(245,166,35,.1)', padding: '2px 6px', borderRadius: 4 }}>
-                    {(unassigned as any)[section.rol]} sin asignar
+                {tareas.length === 0 ? (
+                  <div style={{ fontSize: 11, color: '#3a3a55', fontStyle: 'italic' as const, padding: '8px 0' }}>
+                    Sin tareas asignadas
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
+                    {tareas.slice(0, 8).map((t, i) => {
+                      const ameta = AREA_LABEL[t.area]
+                      return (
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '5px 8px', borderRadius: 5,
+                          background: '#0f0f15', border: '1px solid #1a1a28',
+                          fontSize: 11,
+                        }}>
+                          <span style={{
+                            fontSize: 9, padding: '1px 5px', borderRadius: 3,
+                            background: `${ameta.color}22`, color: ameta.color, fontWeight: 700,
+                          }}>{ameta.emoji} {ameta.label}</span>
+                          <span style={{ flex: 1, color: '#e8e8f0', fontWeight: 600 }}>{t.cliente.nombre}</span>
+                          <span style={{ fontSize: 9, color: '#6a6a80' }}>{t.cantidadPiezas}p · {cicloMesLabel(t.ciclo).split(' ')[0]}</span>
+                        </div>
+                      )
+                    })}
+                    {tareas.length > 8 && (
+                      <div style={{ fontSize: 10, color: '#6a6a80', textAlign: 'center' as const, padding: 4 }}>+ {tareas.length - 8} más</div>
+                    )}
                   </div>
                 )}
               </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Sections by role */}
-      {ROL_SECTIONS.map(section => {
-        const members = equipo.filter(e => e.rol === section.rol)
-        if (members.length === 0) return null
-
-        return (
-          <div key={section.rol} style={{ marginBottom: 28 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <i className={`fas ${section.icon}`} style={{ color: section.color, fontSize: 14 }} />
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{section.label}</span>
-              <span style={{ fontSize: 12, color: '#6a6a80' }}>({members.length})</span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-              {members.map(member => {
-                const assigned = assignmentMap.get(member.id) || []
-                const load = loadColor(assigned.length)
-
-                return (
-                  <div key={member.id} className="card" style={{ borderLeft: `3px solid ${member.color}` }}>
-                    <div className="card-header" style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{
-                            width: 28, height: 28, borderRadius: 8, background: member.color + '22',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            color: member.color, fontWeight: 700, fontSize: 12,
-                          }}>
-                            {member.nombre[0]}
-                          </div>
-                          <span style={{ fontWeight: 700, fontSize: 13 }}>{member.nombre}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: load.bg, color: load.color }}>
-                            {assigned.length} — {load.label}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="card-body" style={{ padding: assigned.length ? '0' : '12px 14px' }}>
-                      {assigned.length === 0 ? (
-                        <div style={{ fontSize: 11, color: '#3a3a50', textAlign: 'center' }}>Sin clientes asignados</div>
-                      ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                          <tbody>
-                            {assigned.map(c => {
-                              const es = getEstadoStyle(c.estado)
-                              const days = daysInState(c)
-                              const owner = owners.find(o => o.id === c.owner_id)
-                              return (
-                                <tr key={c.id} style={{ borderBottom: '1px solid #1a1a28' }}>
-                                  <td style={{ padding: '6px 10px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <SemaforoIcon color={c.semaforo_general} />
-                                      <span style={{ fontWeight: 600 }}>{c.nombre}</span>
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '6px 8px' }}>
-                                    <span style={{ padding: '1px 5px', borderRadius: 3, background: es.bg, color: es.color, fontSize: 9, fontWeight: 600 }}>{c.estado}</span>
-                                  </td>
-                                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                                    {days !== null && days > 0 && (
-                                      <span style={{ fontSize: 9, padding: '1px 4px', borderRadius: 3, background: days > 5 ? 'rgba(245,54,92,.15)' : 'rgba(106,106,128,.1)', color: days > 5 ? '#f5365c' : '#6a6a80' }}>
-                                        {days}d
-                                      </span>
-                                    )}
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
-
-      {equipo.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', padding: 40 }}>
-          <i className="fas fa-users-gear" style={{ fontSize: 32, color: '#2a2a40', marginBottom: 12 }} />
-          <div style={{ fontSize: 14, color: '#6a6a80', marginBottom: 8 }}>No hay miembros del equipo</div>
-          <div style={{ fontSize: 12, color: '#4a4a60' }}>Usa "Gestionar Equipo" en el sidebar para agregar editores, copys y diseñadores.</div>
+            )
+          })}
         </div>
       )}
     </div>
   )
+}
+
+function loadColor(count: number): { color: string; bg: string } {
+  if (count === 0) return { color: '#6a6a80', bg: 'rgba(106,106,128,.12)' }
+  if (count <= 2) return { color: '#00d97e', bg: 'rgba(0,217,126,.12)' }
+  if (count <= 4) return { color: '#f5a623', bg: 'rgba(245,166,35,.12)' }
+  return { color: '#f5365c', bg: 'rgba(245,54,92,.12)' }
+}
+
+function chipStyle(active: boolean, color: string): React.CSSProperties {
+  return {
+    padding: '5px 10px', borderRadius: 14,
+    background: active ? `${color}22` : 'transparent',
+    border: `1px solid ${active ? color : '#2a2a40'}`,
+    color: active ? color : '#a0a0b8',
+    fontSize: 11, fontWeight: 600, cursor: 'pointer',
+  }
 }
