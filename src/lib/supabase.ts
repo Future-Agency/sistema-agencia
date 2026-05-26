@@ -382,13 +382,19 @@ export type AdRevision = {
   updated_at: string
 }
 
+export type EquipoRol = 'copy' | 'editor' | 'diseñador' | 'cm' | 'filmmaker' | 'ads'
 export type Equipo = {
   id: string
   nombre: string
-  rol: 'copy' | 'editor' | 'diseñador' | 'cm'
+  rol: EquipoRol
   color: string
   activo: boolean
 }
+
+/** Rol responsable de un estado de pipeline. Igual que EquipoRol + 'owner'
+ *  (los owners son entidad separada — el chip lo marca pero el dropdown
+ *  no filtra equipo cuando es owner, muestra todos). */
+export type EstadoRolResponsable = EquipoRol | 'owner'
 
 // ============== PORTAL CLIENTE ==============
 

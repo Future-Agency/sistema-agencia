@@ -1022,9 +1022,36 @@ export default function TableroPipeline({
                                         equipo={equipo}
                                         disabled={isSaving}
                                         onAsignado={() => fetchPiezas()}
+                                        responsible={stateList.find(s => s.label === batch.dominantState)?.responsible}
                                       />
                                     )}
                                   </div>
+
+                                  {/* Chip "👤 rol responsable" del estado actual */}
+                                  {(() => {
+                                    const st = stateList.find(s => s.label === batch.dominantState)
+                                    const resp = st?.responsible
+                                    if (!resp) return null
+                                    const list = Array.isArray(resp) ? resp : [resp]
+                                    return (
+                                      <div style={{ marginBottom: 6, display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
+                                        {list.map(r => (
+                                          <span key={r}
+                                            title={`Tarea responsabilidad de: ${r}`}
+                                            style={{
+                                              fontSize: 9, fontWeight: 700,
+                                              padding: '2px 6px', borderRadius: 3,
+                                              background: r === 'owner' ? 'rgba(245,166,35,.12)' : 'rgba(94,114,228,.12)',
+                                              color: r === 'owner' ? '#f5a623' : '#5e72e4',
+                                              border: r === 'owner' ? '1px solid rgba(245,166,35,.30)' : '1px solid rgba(94,114,228,.30)',
+                                              textTransform: 'uppercase' as const, letterSpacing: 0.3,
+                                            }}>
+                                            👤 {r}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )
+                                  })()}
 
                                   {/* Progress bar + advance button */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

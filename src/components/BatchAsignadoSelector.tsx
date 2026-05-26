@@ -1,6 +1,6 @@
 'use client'
 import { useMemo, useState } from 'react'
-import { supabase, type Equipo, type Pieza } from '@/lib/supabase'
+import { supabase, type Equipo, type EquipoRol, type Pieza, type EstadoRolResponsable } from '@/lib/supabase'
 import type { UserArea } from '@/lib/users'
 
 /** Mapping área → campo en `piezas` para asignación. Áreas sin campo no muestran selector. */
@@ -11,8 +11,8 @@ export const AREA_TO_PIEZA_FIELD: Partial<Record<UserArea, keyof Pieza>> = {
   subida: 'cm_id',
 }
 
-/** Mapping área → rol del equipo (para filtrar el dropdown). */
-export const AREA_TO_ROL: Partial<Record<UserArea, Equipo['rol']>> = {
+/** Mapping área → rol del equipo (fallback cuando el estado no tiene `responsible`). */
+export const AREA_TO_ROL: Partial<Record<UserArea, EquipoRol>> = {
   copys:  'copy',
   edit:   'editor',
   diseno: 'diseñador',
@@ -26,27 +26,48 @@ type Props = {
   equipo: Equipo[]
   disabled?: boolean
   onAsignado?: () => void  // callback tras update OK (para refrescar la pipeline)
+  /** Rol(es) responsable(s) del ESTADO actual del batch. Si está set, filtra el dropdown
+   *  por estos roles (recomendados). Cae a AREA_TO_ROL[area] como fallback. */
+  responsible?: EstadoRolResponsable | EstadoRolResponsable[]
 }
 
-export default function BatchAsignadoSelector({ area, piezasIds, asignadoIdActual, equipo, disabled, onAsignado }: Props) {
+export default function BatchAsignadoSelector({ area, piezasIds, asignadoIdActual, equipo, disabled, onAsignado, responsible }: Props) {
   const field = AREA_TO_PIEZA_FIELD[area]
-  const rol = AREA_TO_ROL[area]
+  const fallbackRol = AREA_TO_ROL[area]
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Roles recomendados: los del estado actual (responsible). Si no hay, fallback al rol del área.
+  // 'owner' no es rol del equipo — si está, no filtra equipo (muestra todos como recomendados).
+  const recomendadosRoles = useMemo<EquipoRol[]>(() => {
+    const list = responsible
+      ? (Array.isArray(responsible) ? responsible : [responsible])
+      : (fallbackRol ? [fallbackRol] : [])
+    return list.filter((r): r is EquipoRol => r !== 'owner')
+  }, [responsible, fallbackRol])
+  const incluyeOwner = useMemo(() => {
+    const list = responsible
+      ? (Array.isArray(responsible) ? responsible : [responsible])
+      : []
+    return list.includes('owner')
+  }, [responsible])
+
   // Miembros del rol "correcto" primero, después el resto del equipo.
-  // Permite asignar a cualquier persona aunque su rol nominal no coincida con el área.
   const { recomendados, otros } = useMemo(() => {
     const activos = equipo.filter(e => e.activo)
-    if (!rol) return { recomendados: [] as Equipo[], otros: activos }
-    return {
-      recomendados: activos.filter(e => e.rol === rol),
-      otros: activos.filter(e => e.rol !== rol),
+    if (recomendadosRoles.length === 0) {
+      // 'owner' o sin rol específico → todos como "otros" (no hay filtro hard)
+      return { recomendados: [] as Equipo[], otros: activos }
     }
-  }, [equipo, rol])
+    const set = new Set<EquipoRol>(recomendadosRoles)
+    return {
+      recomendados: activos.filter(e => set.has(e.rol)),
+      otros: activos.filter(e => !set.has(e.rol)),
+    }
+  }, [equipo, recomendadosRoles])
   const totalOpciones = recomendados.length + otros.length
 
-  if (!field || !rol || totalOpciones === 0) return null  // área no asignable o sin equipo
+  if (!field || totalOpciones === 0) return null  // área no asignable o sin equipo
 
   const asignado = asignadoIdActual ? equipo.find(e => e.id === asignadoIdActual) ?? null : null
 
@@ -120,7 +141,12 @@ export default function BatchAsignadoSelector({ area, piezasIds, asignadoIdActua
             )}
             {recomendados.length > 0 && (
               <div style={{ padding: '4px 8px 2px', fontSize: 8, color: '#3a3a55', textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
-                Rol {rol}
+                Rol{recomendadosRoles.length > 1 ? 's' : ''} {recomendadosRoles.join(' / ')}
+              </div>
+            )}
+            {incluyeOwner && recomendados.length === 0 && (
+              <div style={{ padding: '6px 8px', fontSize: 10, color: '#f5a623', background: 'rgba(245,166,35,.08)', borderRadius: 4, marginBottom: 4 }}>
+                ℹ Este estado es del owner del cliente
               </div>
             )}
             {recomendados.map(opt => renderOpt(opt, opt.id === asignadoIdActual, asignar))}
