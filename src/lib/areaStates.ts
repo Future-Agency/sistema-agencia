@@ -4,6 +4,7 @@
 // estado_edicion / estado_diseno ya existen en clientes.
 
 import type { UserArea } from './users'
+import type { EstadoRolResponsable } from './supabase'
 
 export type AreaState = {
   id: number
@@ -14,6 +15,11 @@ export type AreaState = {
   isGate?: boolean
   /** Color override */
   color?: string
+  /** Rol responsable de hacer la tarea en este estado. Usado para mostrar
+   *  el chip "👤 rol" en la card y filtrar el dropdown "+ asignar" del batch.
+   *  Puede ser un array si más de un rol participa (ej: pre-producción).
+   *  Si es 'owner', el dropdown no filtra equipo (los owners son entidad aparte). */
+  responsible?: EstadoRolResponsable | EstadoRolResponsable[]
 }
 
 export type AreaDef = {
@@ -40,13 +46,13 @@ export type AreaDef = {
 // ============== COPYS ==============
 // REGULAR_STATES (7)
 const COPYS_REGULAR: AreaState[] = [
-  { id: 0, label: 'PENDIENTE DE INFORMACIÓN', short: 'PEND.INFO', icon: '⏸️', isGate: true, color: '#f5a623' },
-  { id: 1, label: 'MÉTRICAS',           short: 'MÉT',    icon: '📊', isGate: true },
-  { id: 2, label: 'POR HACER SCRIPTS',  short: 'SCRIPT', icon: '✍️' },
-  { id: 3, label: 'REVISIÓN FRAN',      short: 'R.FRAN', icon: '🔍' },
-  { id: 4, label: 'REVISIÓN CLIENTE',   short: 'R.CLI',  icon: '👁' },
-  { id: 5, label: 'CORRECCIÓN',         short: 'CORR',   icon: '🔧', color: '#f5365c' },
-  { id: 6, label: 'LISTO PARA GRABAR',  short: 'LISTO',  icon: '🎬' },
+  { id: 0, label: 'PENDIENTE DE INFORMACIÓN', short: 'PEND.INFO', icon: '⏸️', isGate: true, color: '#f5a623', responsible: 'owner' },
+  { id: 1, label: 'MÉTRICAS',           short: 'MÉT',    icon: '📊', isGate: true, responsible: 'owner' },
+  { id: 2, label: 'POR HACER SCRIPTS',  short: 'SCRIPT', icon: '✍️', responsible: 'copy' },
+  { id: 3, label: 'REVISIÓN FRAN',      short: 'R.FRAN', icon: '🔍', responsible: 'owner' },
+  { id: 4, label: 'REVISIÓN CLIENTE',   short: 'R.CLI',  icon: '👁', responsible: 'owner' },
+  { id: 5, label: 'CORRECCIÓN',         short: 'CORR',   icon: '🔧', color: '#f5365c', responsible: 'copy' },
+  { id: 6, label: 'LISTO PARA GRABAR',  short: 'LISTO',  icon: '🎬', responsible: 'owner' },
 ]
 
 const COPYS_ONBOARDING: AreaState[] = [
@@ -78,52 +84,52 @@ export const ESTADO_PENDIENTE_INFO_LABEL = 'PENDIENTE DE INFORMACIÓN'
 
 // ============== GRAB ==============
 const GRAB_STATES: AreaState[] = [
-  { id: 0, label: 'RECEPCIÓN',         icon: '📥' },
-  { id: 1, label: 'PRE-PRODUCCIÓN',    icon: '📋' },
-  { id: 2, label: 'AGENDA FILMACIÓN',  icon: '📅' },
-  { id: 3, label: 'FILMACIÓN',         icon: '🎥' },
-  { id: 4, label: 'SUBIDA DRIVE',      icon: '🔍' },
-  { id: 5, label: 'MATERIAL SUBIDO',   icon: '✅' },
+  { id: 0, label: 'RECEPCIÓN',         icon: '📥', responsible: 'owner' },
+  { id: 1, label: 'PRE-PRODUCCIÓN',    icon: '📋', responsible: ['filmmaker', 'owner'] },
+  { id: 2, label: 'AGENDA FILMACIÓN',  icon: '📅', responsible: 'owner' },
+  { id: 3, label: 'FILMACIÓN',         icon: '🎥', responsible: 'filmmaker' },
+  { id: 4, label: 'SUBIDA DRIVE',      icon: '🔍', responsible: 'filmmaker' },
+  { id: 5, label: 'MATERIAL SUBIDO',   icon: '✅', responsible: 'editor' },
 ]
 
 // ============== EDIT ==============
 const EDIT_STATES: AreaState[] = [
-  { id: 0, label: 'RECEPCIÓN',         icon: '📥' },
-  { id: 1, label: 'EDICIÓN BORRADOR',  icon: '🎞️' },
-  { id: 2, label: 'REVISIÓN INTERNA',  icon: '👀' },
-  { id: 3, label: 'CORRECCIÓN',        icon: '🔄', color: '#f5365c' },
-  { id: 4, label: 'REVISIÓN CLIENTE',  icon: '👁' },
-  { id: 5, label: 'APROBADO',          icon: '✅' },
+  { id: 0, label: 'RECEPCIÓN',         icon: '📥', responsible: 'editor' },
+  { id: 1, label: 'EDICIÓN BORRADOR',  icon: '🎞️', responsible: 'editor' },
+  { id: 2, label: 'REVISIÓN INTERNA',  icon: '👀', responsible: 'owner' },
+  { id: 3, label: 'CORRECCIÓN',        icon: '🔄', color: '#f5365c', responsible: 'editor' },
+  { id: 4, label: 'REVISIÓN CLIENTE',  icon: '👁', responsible: 'owner' },
+  { id: 5, label: 'APROBADO',          icon: '✅', responsible: 'diseñador' },
 ]
 
 // ============== DISEÑO ==============
 const DISENO_STATES: AreaState[] = [
-  { id: 0, label: 'RECEPCIÓN',         icon: '📥' },
-  { id: 1, label: 'DISEÑO EN CURSO',   icon: '🎨' },
-  { id: 2, label: 'REVISIÓN INTERNA',  icon: '👀' },
-  { id: 3, label: 'CORRECCIÓN',        icon: '🔄', color: '#f5365c' },
-  { id: 4, label: 'REVISIÓN CLIENTE',  icon: '👁' },
-  { id: 5, label: 'APROBADO',          icon: '✅' },
+  { id: 0, label: 'RECEPCIÓN',         icon: '📥', responsible: 'diseñador' },
+  { id: 1, label: 'DISEÑO EN CURSO',   icon: '🎨', responsible: 'diseñador' },
+  { id: 2, label: 'REVISIÓN INTERNA',  icon: '👀', responsible: 'owner' },
+  { id: 3, label: 'CORRECCIÓN',        icon: '🔄', color: '#f5365c', responsible: 'diseñador' },
+  { id: 4, label: 'REVISIÓN CLIENTE',  icon: '👁', responsible: 'owner' },
+  { id: 5, label: 'APROBADO',          icon: '✅', responsible: 'cm' },
 ]
 
 // ============== SUBIDA ==============
 const SUBIDA_STATES: AreaState[] = [
-  { id: 0, label: 'RECEPCIÓN',         icon: '📥' },
-  { id: 1, label: 'PREPARAR CONTENIDO', icon: '🛠️' },
-  { id: 2, label: 'COPYWRITING',       icon: '✍️' },
-  { id: 3, label: 'PROGRAMACIÓN',      icon: '📅' },
-  { id: 4, label: 'PUBLICADO',         icon: '🚀' },
+  { id: 0, label: 'RECEPCIÓN',         icon: '📥', responsible: 'cm' },
+  { id: 1, label: 'PREPARAR CONTENIDO', icon: '🛠️', responsible: 'cm' },
+  { id: 2, label: 'COPYWRITING',       icon: '✍️', responsible: 'cm' },
+  { id: 3, label: 'PROGRAMACIÓN',      icon: '📅', responsible: 'cm' },
+  { id: 4, label: 'PUBLICADO',         icon: '🚀', responsible: 'ads' },
 ]
 
 // ============== ANUNCIOS (cierre de ciclo) ==============
 // Loop interno post-publicación: activación de ads, monitoreo y reporte final.
 // Reemplaza al estado legacy "METRICAS Y VOLVER A EMPEZAR" con un pipeline propio.
 const ANUNCIOS_AREA_STATES: AreaState[] = [
-  { id: 0, label: 'ANUNCIOS SIN ACTIVAR',    icon: '📣' },
-  { id: 1, label: 'ANUNCIOS PRENDIDOS',      icon: '🔥' },
-  { id: 2, label: 'ANUNCIOS CHECK',          icon: '✅' },
-  { id: 3, label: 'REPORTE ADS + ORGÁNICO',  icon: '📊' },
-  { id: 4, label: 'VOLVER A EMPEZAR',        icon: '🔄' },
+  { id: 0, label: 'ANUNCIOS SIN ACTIVAR',    icon: '📣', responsible: 'ads' },
+  { id: 1, label: 'ANUNCIOS PRENDIDOS',      icon: '🔥', responsible: 'ads' },
+  { id: 2, label: 'ANUNCIOS CHECK',          icon: '✅', responsible: 'ads' },
+  { id: 3, label: 'REPORTE ADS + ORGÁNICO',  icon: '📊', responsible: ['ads', 'owner'] },
+  { id: 4, label: 'VOLVER A EMPEZAR',        icon: '🔄', responsible: 'owner' },
 ]
 
 export const AREA_DEFS: Record<UserArea, AreaDef> = {
