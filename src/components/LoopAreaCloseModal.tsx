@@ -4,6 +4,7 @@ import { supabase, type Cliente, type ClienteCicloRecursos } from '@/lib/supabas
 import type { CurrentUser, UserArea } from '@/lib/users'
 import { AREA_CLOSE_CONFIG, missingPreflight, type PreflightLink } from '@/lib/areaClose'
 import { cicloMesLabel } from '@/lib/cycles'
+import { calcularFechaUltimoContenidoEstimada, primerDiaDelCiclo, planFromCliente } from '@/lib/piezas'
 
 type Batch = {
   cliente: Cliente
@@ -79,6 +80,18 @@ export default function LoopAreaCloseModal({ agenciaId: _ag, area, batch, toStat
             pre[p.field as string] = String(v)
           }
         })
+        // Pre-llenar fecha estimada del último contenido (solo si está vacía).
+        // Cadencia: video=2d, carrousel=7d, historia=7d desde el primer día del ciclo.
+        if (area === 'subida' && !pre['fecha_ultimo_contenido_subido']) {
+          const estim = calcularFechaUltimoContenidoEstimada(planFromCliente(batch.cliente), primerDiaDelCiclo(batch.cicloMes))
+          if (estim) pre['fecha_ultimo_contenido_subido'] = estim.toISOString().slice(0, 10)
+        }
+        // Pre-llenar cantidad con la suma del plan si está vacía.
+        if (area === 'subida' && !pre['cantidad_contenidos_subidos']) {
+          const plan = planFromCliente(batch.cliente)
+          const total = (plan.plan_videos || 0) + (plan.plan_portadas || 0) + (plan.plan_carrouseles || 0) + (plan.plan_historias || 0)
+          if (total > 0) pre['cantidad_contenidos_subidos'] = String(total)
+        }
         setPreflightValues(pre)
       })
   }, [batch.cliente.id, batch.cicloMes, area, cfg.linkField, cfg.commentField, cfg.preflight])

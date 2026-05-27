@@ -1,8 +1,10 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { SemaforoIcon, Badge } from './ui'
 import type { Cliente, Owner } from '@/lib/supabase'
 import { getEstadoStyle } from '@/lib/estados'
+
+type FechaContenido = { fecha: Date; confirmada: boolean }
 
 type Props = {
   clientes: Cliente[]
@@ -11,9 +13,60 @@ type Props = {
   ownerFilter: string
   tipoFilter: string
   estadoFilter: string
+  /** Fecha "Contenido hasta" por cliente. Confirmada = la CM cerró Subida; estimada = calculada con cadencia default. */
+  fechasContenidoHasta?: Map<number, FechaContenido>
+  /** Callback al editar la fecha desde el badge (date picker inline). */
+  onUpdateFecha?: (clienteId: number, fecha: string) => Promise<void>
 }
 
-export default function TableroGeneral({ clientes, owners, onSelectCliente, ownerFilter, tipoFilter, estadoFilter }: Props) {
+function diffDaysFromNow(d: Date): number {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const t = new Date(d); t.setHours(0, 0, 0, 0)
+  return Math.round((t.getTime() - now.getTime()) / 86400000)
+}
+
+function colorFromDays(d: number): { bg: string; border: string; color: string } {
+  if (d < 0) return { bg: 'rgba(245,54,92,.10)',  border: 'rgba(245,54,92,.35)',  color: '#f5365c' } // vencido
+  if (d <= 7) return { bg: 'rgba(245,166,35,.10)', border: 'rgba(245,166,35,.35)', color: '#f5a623' } // urgente
+  return { bg: 'rgba(0,217,126,.08)', border: 'rgba(0,217,126,.30)', color: '#00d97e' } // OK
+}
+
+function ContenidoHastaBadge({ fc, clienteId, onUpdate }: { fc: FechaContenido; clienteId: number; onUpdate?: (id: number, fecha: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(fc.fecha.toISOString().slice(0, 10))
+  const days = diffDaysFromNow(fc.fecha)
+  const col = colorFromDays(days)
+  const fmtFecha = fc.fecha.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+  if (editing) {
+    return (
+      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input type="date" value={val} onChange={e => setVal(e.target.value)}
+          style={{ background: '#0a0a0f', border: '1px solid #2a2a40', borderRadius: 4, color: '#e8e8f0', fontSize: 11, padding: '2px 4px' }} />
+        <button onClick={async () => { if (onUpdate) await onUpdate(clienteId, val); setEditing(false) }}
+          style={{ background: 'rgba(0,217,126,.20)', border: '1px solid #00d97e', color: '#00d97e', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>✓</button>
+        <button onClick={() => setEditing(false)}
+          style={{ background: 'transparent', border: '1px solid #2a2a40', color: '#a0a0b8', borderRadius: 4, padding: '2px 6px', fontSize: 10, cursor: 'pointer' }}>✕</button>
+      </div>
+    )
+  }
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); if (onUpdate) setEditing(true) }}
+      title={`Contenido programado hasta ${fc.fecha.toLocaleDateString('es-AR')}${fc.confirmada ? '' : ' (estimada — la CM no confirmó al cerrar Subida)'}. ${days < 0 ? `Hace ${Math.abs(days)} días que no hay contenido nuevo.` : days === 0 ? 'Hoy es el último día.' : `Quedan ${days} días.`}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        background: col.bg, border: `1px solid ${col.border}`, color: col.color,
+        borderRadius: 4, padding: '2px 6px', fontSize: 11, fontWeight: 700,
+        cursor: onUpdate ? 'pointer' : 'default',
+      }}>
+      📅 {fc.confirmada ? '' : '~'}{fmtFecha}
+      {!fc.confirmada && <span style={{ fontSize: 9, opacity: .7, fontWeight: 500 }}>est.</span>}
+    </button>
+  )
+}
+
+export default function TableroGeneral({ clientes, owners, onSelectCliente, ownerFilter, tipoFilter, estadoFilter, fechasContenidoHasta, onUpdateFecha }: Props) {
   const filtered = useMemo(() => {
     return clientes.filter(c => {
       if (ownerFilter === '__none__' && c.owner_id) return false
@@ -89,6 +142,12 @@ export default function TableroGeneral({ clientes, owners, onSelectCliente, owne
                   <span>Contacto: {c.ultimo_contacto}</span>
                   <span>Pub: {c.ultima_publicacion}</span>
                 </div>
+                {fechasContenidoHasta?.get(c.id) && (
+                  <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 10, color: '#6a6a80', textTransform: 'uppercase' as const, letterSpacing: 0.3, fontWeight: 600 }}>Contenido hasta</span>
+                    <ContenidoHastaBadge fc={fechasContenidoHasta.get(c.id)!} clienteId={c.id} onUpdate={onUpdateFecha} />
+                  </div>
+                )}
               </div>
             </div>
           )

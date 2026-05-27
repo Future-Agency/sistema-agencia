@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza, type DeudaContenido } from '@/lib/supabase'
-import { indexPiezasByLoop, loopEstaCompletado } from '@/lib/piezas'
+import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza, type DeudaContenido, type ClienteCicloRecursos } from '@/lib/supabase'
+import { indexPiezasByLoop, loopEstaCompletado, calcularFechaUltimoContenidoEstimada, primerDiaDelCiclo, planFromCliente } from '@/lib/piezas'
 import { Loading, Toast } from '@/components/ui'
 import ConfirmNuevoCicloModal from '@/components/ConfirmNuevoCicloModal'
 import TableroGeneral from '@/components/TableroGeneral'
@@ -52,6 +52,7 @@ export default function Home() {
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([])
   const [piezasAgencia, setPiezasAgencia] = useState<Pieza[]>([])
   const [deudasAgencia, setDeudasAgencia] = useState<DeudaContenido[]>([])
+  const [recursosAgencia, setRecursosAgencia] = useState<ClienteCicloRecursos[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [ownerFilter, setOwnerFilter] = useState('')
@@ -174,21 +175,34 @@ export default function Home() {
     setDeudasAgencia((data ?? []) as DeudaContenido[])
   }, [agenciaId])
 
+  // Carga global de cliente_ciclo_recursos (para badge "Contenido hasta" en Tablero General + otros)
+  const loadRecursosAgencia = useCallback(async () => {
+    const { data } = await supabase
+      .from('cliente_ciclo_recursos')
+      .select('cliente_id, ciclo_mes, fecha_ultimo_contenido_subido, cantidad_contenidos_subidos, fecha_publicacion')
+      .eq('agencia_id', agenciaId)
+    setRecursosAgencia((data ?? []) as ClienteCicloRecursos[])
+  }, [agenciaId])
+
   useEffect(() => {
     if (currentUser && agenciaId) loadDeudasAgencia()
   }, [currentUser, agenciaId, loadDeudasAgencia])
 
-  // Listener: refrescar piezas y deudas cuando hay cambios cross-tab / realtime (silencioso)
+  useEffect(() => {
+    if (currentUser && agenciaId) loadRecursosAgencia()
+  }, [currentUser, agenciaId, loadRecursosAgencia])
+
+  // Listener: refrescar piezas + deudas + recursos cuando hay cambios cross-tab / realtime
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const handler = () => { loadPiezasAgencia(); loadDeudasAgencia() }
+    const handler = () => { loadPiezasAgencia(); loadDeudasAgencia(); loadRecursosAgencia() }
     window.addEventListener('estado-loop-changed', handler)
     window.addEventListener('clientes-refresh', handler)
     return () => {
       window.removeEventListener('estado-loop-changed', handler)
       window.removeEventListener('clientes-refresh', handler)
     }
-  }, [loadPiezasAgencia, loadDeudasAgencia])
+  }, [loadPiezasAgencia, loadDeudasAgencia, loadRecursosAgencia])
 
   // Índice piezas por loop (cliente × ciclo) para chequeos rápidos
   const piezasByLoop = useMemo(() => indexPiezasByLoop(piezasAgencia), [piezasAgencia])
@@ -202,6 +216,32 @@ export default function Home() {
     }
     return m
   }, [piezasAgencia])
+
+  // Map<cliente_id, { fecha: Date, confirmada: boolean }> — fecha "Contenido hasta".
+  // Si hay fecha_ultimo_contenido_subido (confirmada por CM) en algún ciclo, toma el MAX.
+  // Si no, estima con plan + cadencia + primer día del ciclo activo.
+  const fechasContenidoHasta = useMemo(() => {
+    const cycle = cycleFilter ?? currentCicloMes()
+    const m = new Map<number, { fecha: Date; confirmada: boolean }>()
+    // Index recursos por cliente y por (cliente,ciclo)
+    const confirmedByCliente = new Map<number, Date>()
+    for (const r of recursosAgencia) {
+      const v = r.fecha_ultimo_contenido_subido
+      if (!v) continue
+      const d = new Date(v)
+      if (isNaN(d.getTime())) continue
+      const prev = confirmedByCliente.get(r.cliente_id)
+      if (!prev || d > prev) confirmedByCliente.set(r.cliente_id, d)
+    }
+    for (const c of clientes) {
+      const confirmada = confirmedByCliente.get(c.id)
+      if (confirmada) { m.set(c.id, { fecha: confirmada, confirmada: true }); continue }
+      // Estimación: usa el plan del cliente desde el primer día del ciclo activo
+      const estimada = calcularFechaUltimoContenidoEstimada(planFromCliente(c), primerDiaDelCiclo(cycle))
+      if (estimada) m.set(c.id, { fecha: estimada, confirmada: false })
+    }
+    return m
+  }, [recursosAgencia, clientes, cycleFilter])
 
   // Map<cliente_id, count> de deudas pendientes ASIGNADAS al ciclo actual del filtro.
   // Usado por CycleHeader para no marcar como "completado" a clientes con deudas pendientes.
@@ -609,7 +649,7 @@ export default function Home() {
             <>
               <UrgentesBar clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} />
               <CycleHeader clientes={filteredClientes} piezasByLoop={piezasByLoop} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} cicloActual={cycleFilter ?? currentCicloMes()} cycleLabel={cicloMesLabel(cycleFilter ?? currentCicloMes()).split(' ')[0]} />
-              <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} />
+              <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} fechasContenidoHasta={fechasContenidoHasta} onUpdateFecha={async (clienteId, fecha) => { const cycle = cycleFilter ?? currentCicloMes(); await supabase.from('cliente_ciclo_recursos').upsert({ agencia_id: agenciaId, cliente_id: clienteId, ciclo_mes: cycle, fecha_ultimo_contenido_subido: fecha, updated_at: new Date().toISOString() }, { onConflict: 'cliente_id,ciclo_mes' }); loadRecursosAgencia() }} />
             </>
           ) : view === 'copys' ? (
             <TableroPipeline area="copys" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} />
