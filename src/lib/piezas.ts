@@ -212,6 +212,30 @@ export function calcularFechaUltimoContenidoEstimada(plan: PlanPiezas, fechaInic
   return r
 }
 
+// =================== Tiempo en estado ===================
+
+/** Días que el batch lleva en su estado actual.
+ *  Proxy: max(estado_changed_at) de sus piezas. Si null para todas, devuelve null. */
+export function diasEnEstadoBatch(piezas: Pieza[]): number | null {
+  if (piezas.length === 0) return null
+  let lastChangeMs = 0
+  for (const p of piezas) {
+    if (!p.estado_changed_at) continue
+    const t = new Date(p.estado_changed_at).getTime()
+    if (t > lastChangeMs) lastChangeMs = t
+  }
+  if (lastChangeMs === 0) return null
+  return Math.max(0, Math.floor((Date.now() - lastChangeMs) / 86400000))
+}
+
+/** Color para badge "hace Xd": gris <=1, azul 2, amarillo 3-5, rojo 6+. */
+export function colorPorDiasEnEstado(d: number): { bg: string; border: string; color: string } {
+  if (d <= 1) return { bg: 'rgba(106,106,128,.10)', border: 'rgba(106,106,128,.30)', color: '#a0a0b8' }
+  if (d <= 2) return { bg: 'rgba(94,114,228,.10)',  border: 'rgba(94,114,228,.30)',  color: '#5e72e4' }
+  if (d <= 5) return { bg: 'rgba(245,166,35,.10)',  border: 'rgba(245,166,35,.30)',  color: '#f5a623' }
+  return         { bg: 'rgba(245,54,92,.10)',   border: 'rgba(245,54,92,.30)',   color: '#f5365c' }
+}
+
 // =================== Estado del loop / batch ===================
 
 /** Una pieza está "terminada" si su última área del pipeline está aprobada.
