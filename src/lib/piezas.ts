@@ -171,6 +171,47 @@ export function summarizePiezas(piezas: Pieza[]): PiezaSummary {
   return summary
 }
 
+// =================== Cadencia de publicación ===================
+
+/** Cadencia default por tipo de pieza (días entre cada publicación).
+ *  La CM puede confirmar/ajustar manualmente al cerrar Subida.
+ *  Portada no aplica (es thumb del video, no se publica como ítem propio). */
+export const CADENCIA_DIAS_DEFAULT: Record<PiezaTipo, number | null> = {
+  video:     2,
+  carrousel: 7,
+  historia:  7,
+  portada:   null,
+}
+
+/** Convierte 'junio-2026' → Date del 1° de junio. Default si null. */
+export function primerDiaDelCiclo(cicloMes: string): Date {
+  const [mesNombre, anioStr] = cicloMes.split('-')
+  const meses: Record<string, number> = {
+    enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+    julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+  }
+  const m = meses[mesNombre?.toLowerCase()]
+  const y = Number(anioStr)
+  if (m === undefined || isNaN(y)) return new Date()
+  return new Date(y, m, 1)
+}
+
+/** Estima la fecha del último contenido subido del batch en base al plan y la cadencia default.
+ *  Para cada tipo activo, calcula (cantidad - 1) * cadencia días desde fechaInicio.
+ *  Retorna la fecha más lejana (todos los tipos se publican en paralelo). */
+export function calcularFechaUltimoContenidoEstimada(plan: PlanPiezas, fechaInicio: Date): Date | null {
+  const dias = [
+    plan.plan_videos > 0      ? (plan.plan_videos      - 1) * (CADENCIA_DIAS_DEFAULT.video     ?? 0) : -1,
+    plan.plan_carrouseles > 0 ? (plan.plan_carrouseles - 1) * (CADENCIA_DIAS_DEFAULT.carrousel ?? 0) : -1,
+    plan.plan_historias > 0   ? (plan.plan_historias   - 1) * (CADENCIA_DIAS_DEFAULT.historia  ?? 0) : -1,
+  ].filter(d => d >= 0)
+  if (dias.length === 0) return null
+  const maxDias = Math.max(...dias)
+  const r = new Date(fechaInicio)
+  r.setDate(r.getDate() + maxDias)
+  return r
+}
+
 // =================== Estado del loop / batch ===================
 
 /** Una pieza está "terminada" si su última área del pipeline está aprobada.
