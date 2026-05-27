@@ -7,7 +7,7 @@ import type { CurrentUser, UserArea } from '@/lib/users'
 import type { Equipo } from '@/lib/supabase'
 import BatchAsignadoSelector, { AREA_TO_PIEZA_FIELD } from './BatchAsignadoSelector'
 import { AREA_DEFS, type AreaState, ESTADO_PENDIENTE_INFO_LABEL } from '@/lib/areaStates'
-import { PIPELINE_BY_TIPO } from '@/lib/piezas'
+import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
 import { cicloMesLabel, parseCicloMes, currentCicloMes, prevCicloMes, nextCicloMes, type CicloMes } from '@/lib/cycles'
 import { AREA_CLOSE_CONFIG } from '@/lib/areaClose'
 import { getPreflightGate, missingPreflightFields } from '@/lib/areaPreflightGates'
@@ -629,6 +629,29 @@ export default function TableroPipeline({
       // sigue al flujo normal
     }
 
+    // 0.d. Gate "tardó mucho" — si el batch lleva > 3 días en el estado actual,
+    // pedir justificación antes de avanzar. Se guarda como nota tipo "nota".
+    const dias = diasEnEstadoBatch(batch.piezas) ?? 0
+    if (dias > 3) {
+      const motivo = window.prompt(
+        `Este batch estuvo ${dias} días en "${batch.dominantState}".\n\n` +
+        `Antes de pasarlo a "${toState}", contanos por qué tardó:`
+      )
+      if (motivo === null) return  // cancelado
+      const texto = motivo.trim()
+      if (texto.length > 0) {
+        await supabase.from('pipeline_notas').insert({
+          agencia_id: agenciaId,
+          area,
+          cliente_id: batch.cliente.id,
+          ciclo_mes: batch.cicloMes,
+          tipo: 'nota',
+          texto: `[${dias}d en ${batch.dominantState}] ${texto}`,
+          autor: currentUser.name,
+        })
+      }
+    }
+
     // 1. Cierre de área → modal con link + comment + preflight
     const cfg = AREA_CLOSE_CONFIG[area]
     if (toState === cfg.closeState) {
@@ -959,14 +982,28 @@ export default function TableroPipeline({
                                     </span>
                                   </div>
 
-                                  {/* Cliente name */}
-                                  <div
-                                    onClick={(e) => { e.stopPropagation(); onSelectCliente(batch.cliente) }}
-                                    style={{ fontWeight: 700, fontSize: 13, cursor: 'pointer', marginBottom: 4 }}
-                                    onMouseEnter={e => (e.currentTarget.style.color = '#5e72e4')}
-                                    onMouseLeave={e => (e.currentTarget.style.color = '#e8e8f0')}
-                                  >
-                                    {batch.cliente.nombre}
+                                  {/* Cliente name + badge "hace Xd" */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, justifyContent: 'space-between' }}>
+                                    <div
+                                      onClick={(e) => { e.stopPropagation(); onSelectCliente(batch.cliente) }}
+                                      style={{ fontWeight: 700, fontSize: 13, cursor: 'pointer', flex: 1, minWidth: 0, overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const }}
+                                      onMouseEnter={e => (e.currentTarget.style.color = '#5e72e4')}
+                                      onMouseLeave={e => (e.currentTarget.style.color = '#e8e8f0')}
+                                    >
+                                      {batch.cliente.nombre}
+                                    </div>
+                                    {(() => {
+                                      const dias = diasEnEstadoBatch(batch.piezas)
+                                      if (dias === null) return null
+                                      const col = colorPorDiasEnEstado(dias)
+                                      return (
+                                        <span title={`Hace ${dias} día${dias === 1 ? '' : 's'} en "${batch.dominantState}"`} style={{
+                                          fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3,
+                                          background: col.bg, border: `1px solid ${col.border}`, color: col.color,
+                                          flexShrink: 0,
+                                        }}>{dias}d</span>
+                                      )
+                                    })()}
                                   </div>
 
                                   {/* Badge "🔒 X deudas pendientes" — gate: este cliente tiene deudas asignadas al ciclo */}

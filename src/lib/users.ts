@@ -183,6 +183,8 @@ export const VIEW_VISIBILITY: Record<string, ViewVisibility> = {
   pedidos:      'admin+semi',
   // B3 — deudas de contenido
   deudas:       'admin+semi',
+  // Día de la Agencia
+  'dia-agencia': 'all',
   // Vistas analíticas — solo admin
   gestion:      'admin',
   diagnostico:  'admin',
@@ -271,6 +273,7 @@ export const VIEW_TO_AREAS: Record<string, UserArea[] | null> = {
   fechas:  null,
   pedidos: null,
   deudas:  null,
+  'dia-agencia': null,
   metricas: null,
   equipo: null,
 }
