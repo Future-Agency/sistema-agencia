@@ -236,6 +236,58 @@ export function colorPorDiasEnEstado(d: number): { bg: string; border: string; c
   return         { bg: 'rgba(245,54,92,.10)',   border: 'rgba(245,54,92,.30)',   color: '#f5365c' }
 }
 
+// =================== Atraso predictivo en Copys ===================
+
+/** Días entre la fecha de grabación y la última publicación del ciclo.
+ *  Asumimos 14d: grabación + edit + diseño + subida + buffer.
+ *  Editable globalmente si la agencia trabaja con otros tiempos. */
+export const LEAD_GRABACION_A_PUBLICACION_DIAS = 14
+
+/** Días que el copy debería estar listo ANTES de la grabación.
+ *  Por SLA de la agencia, scripts se hacen 3 semanas antes de la próxima
+ *  grabación prevista — aunque no haya fecha tentativa ni confirmada. */
+export const ANTICIPACION_COPYS_DIAS = 21
+
+/** Calcula la próxima fecha de grabación prevista con fallbacks:
+ *  1. fecha_grabacion_confirmada (la verdadera, ya pactada).
+ *  2. fecha_grabacion_tentativa (propuesta interna del equipo).
+ *  3. fecha_ultimo_contenido_subido − LEAD_GRABACION_A_PUBLICACION_DIAS
+ *     (estimada — si tenemos contenido hasta el 30/06, grabamos 14d antes).
+ *  4. null si no hay datos suficientes. */
+export function fechaGrabacionPrevista(
+  fechaGrabConfirmada: string | null | undefined,
+  fechaGrabTentativa: string | null | undefined,
+  fechaUltimoContenido: Date | null,
+): Date | null {
+  if (fechaGrabConfirmada) {
+    const d = new Date(fechaGrabConfirmada)
+    if (!isNaN(d.getTime())) return d
+  }
+  if (fechaGrabTentativa) {
+    const d = new Date(fechaGrabTentativa)
+    if (!isNaN(d.getTime())) return d
+  }
+  if (fechaUltimoContenido) {
+    const d = new Date(fechaUltimoContenido)
+    d.setDate(d.getDate() - LEAD_GRABACION_A_PUBLICACION_DIAS)
+    return d
+  }
+  return null
+}
+
+/** Días de atraso de copys: cuántos días pasaron desde que debería haber estado
+ *  el script listo (próxima grabación − 21d). 0 = a tiempo. >0 = atrasado. */
+export function diasAtrasoCopys(fechaGrabacion: Date | null): number {
+  if (!fechaGrabacion) return 0
+  const limite = new Date(fechaGrabacion)
+  limite.setDate(limite.getDate() - ANTICIPACION_COPYS_DIAS)
+  limite.setHours(0, 0, 0, 0)
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const dias = Math.floor((now.getTime() - limite.getTime()) / 86400000)
+  return Math.max(0, dias)
+}
+
 // =================== Estado del loop / batch ===================
 
 /** Una pieza está "terminada" si su última área del pipeline está aprobada.
