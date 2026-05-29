@@ -185,6 +185,8 @@ export const VIEW_VISIBILITY: Record<string, ViewVisibility> = {
   deudas:       'admin+semi',
   // Día de la Agencia
   'dia-agencia': 'all',
+  // Plan de Producción (vista priorizada de atrasos)
+  'plan-produccion': 'all',
   // Vistas analíticas — solo admin
   gestion:      'admin',
   diagnostico:  'admin',
@@ -274,6 +276,7 @@ export const VIEW_TO_AREAS: Record<string, UserArea[] | null> = {
   pedidos: null,
   deudas:  null,
   'dia-agencia': null,
+  'plan-produccion': null,
   metricas: null,
   equipo: null,
 }

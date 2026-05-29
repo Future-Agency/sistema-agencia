@@ -33,6 +33,7 @@ import TableroFechasEspeciales from '@/components/TableroFechasEspeciales'
 import TableroPedidosClientes from '@/components/TableroPedidosClientes'
 import TableroDeudasContenido from '@/components/TableroDeudasContenido'
 import TableroDiaDeAgencia from '@/components/TableroDiaDeAgencia'
+import TableroPlanProduccion from '@/components/TableroPlanProduccion'
 import CycleSelector from '@/components/CycleSelector'
 import { currentCicloMes, nextCicloMes, comparteCiclo, cicloMesLabel, type CicloMes } from '@/lib/cycles'
 import EquipoModal from '@/components/EquipoModal'
@@ -422,6 +423,7 @@ export default function Home() {
     { id: 'pedidos', icon: 'fa-box-open', label: 'Pedidos' },
     { id: 'deudas', icon: 'fa-book', label: 'Deudas' },
     { id: 'dia-agencia', icon: 'fa-calendar-day', label: 'Día de la Agencia' },
+    { id: 'plan-produccion', icon: 'fa-list-check', label: 'Plan de Producción' },
     { id: 'equipo', icon: 'fa-users-gear', label: 'Equipo' },
   ]
   const navItems = allNavItems.filter(item => canSeeView(currentUser, item.id))
@@ -696,6 +698,8 @@ export default function Home() {
             <TableroDeudasContenido agenciaId={agenciaId} clientes={clientes} currentUser={currentUser} />
           ) : view === 'dia-agencia' ? (
             <TableroDiaDeAgencia clientes={clientes} equipo={equipo} owners={owners} piezas={piezasAgencia} onSelectCliente={setSelectedCliente} />
+          ) : view === 'plan-produccion' ? (
+            <TableroPlanProduccion clientes={clientes} piezas={piezasAgencia} recursosByLoop={recursosByLoop} fechasContenidoHasta={fechasContenidoHasta} cicloActivo={cycleFilter ?? currentCicloMes()} onSelectCliente={setSelectedCliente} />
           ) : view === 'gestion' ? (
             <TableroGestion clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} agenciaId={agenciaId} currentUser={currentUser} equipo={equipo} cicloMes={cycleFilter ?? undefined} />
           ) : view === 'diagnostico' ? (
