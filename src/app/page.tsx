@@ -112,8 +112,20 @@ export default function Home() {
   }, [])
 
   const loadData = useCallback(async () => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem('agencia_id') : null
-    const ag = stored || 'future'
+    // Permite override por query string ?agencia=team-b → persiste en localStorage
+    // así los equipos pueden tener "su link" directo. Default: localStorage o 'future'.
+    let ag: string
+    if (typeof window !== 'undefined') {
+      const fromUrl = new URLSearchParams(window.location.search).get('agencia')
+      if (fromUrl) {
+        localStorage.setItem('agencia_id', fromUrl)
+        ag = fromUrl
+      } else {
+        ag = localStorage.getItem('agencia_id') || 'future'
+      }
+    } else {
+      ag = 'future'
+    }
     const [agenciasRes, ownersRes, clientesRes, equipoRes, adRes] = await Promise.all([
       supabase.from('agencias').select('*').eq('activo', true).order('nombre'),
       supabase.from('owners').select('*').eq('activo', true).eq('agencia_id', ag).order('nombre_corto'),
