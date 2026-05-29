@@ -7,7 +7,8 @@ import type { CurrentUser, UserArea } from '@/lib/users'
 import type { Equipo } from '@/lib/supabase'
 import BatchAsignadoSelector, { AREA_TO_PIEZA_FIELD } from './BatchAsignadoSelector'
 import { AREA_DEFS, type AreaState, ESTADO_PENDIENTE_INFO_LABEL } from '@/lib/areaStates'
-import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
+import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado, fechaGrabacionPrevista, diasAtrasoCopys } from '@/lib/piezas'
+import type { ClienteCicloRecursos } from '@/lib/supabase'
 import { cicloMesLabel, parseCicloMes, currentCicloMes, prevCicloMes, nextCicloMes, type CicloMes } from '@/lib/cycles'
 import { AREA_CLOSE_CONFIG } from '@/lib/areaClose'
 import { getPreflightGate, missingPreflightFields } from '@/lib/areaPreflightGates'
@@ -38,6 +39,12 @@ type Props = {
   deudasPendientesByCliente?: Map<number, number>
   /** Miembros del equipo (para selector de asignación en cards). */
   equipo?: Equipo[]
+  /** Map<`cliente_id::ciclo_mes`, recursos> para acceso a fecha_grabacion_*
+   *  en el cálculo de atraso predictivo de copys. */
+  recursosByLoop?: Map<string, ClienteCicloRecursos>
+  /** Map<cliente_id, {fecha, confirmada}> de "Contenido hasta" — fallback
+   *  para inferir grabación cuando no hay fechas explícitas. */
+  fechasContenidoHasta?: Map<number, { fecha: Date; confirmada: boolean }>
 }
 
 type LoopBatch = {
@@ -151,7 +158,7 @@ function dominantStateInArea(piezas: Pieza[], area: UserArea, areaStates: AreaSt
 
 export default function TableroPipeline({
   area, agenciaId, currentUser, clientes, owners, onSelectCliente, ownerFilter,
-  visibleStateIds, titleOverride, cycleFilter, deudasPendientesByCliente, equipo,
+  visibleStateIds, titleOverride, cycleFilter, deudasPendientesByCliente, equipo, recursosByLoop, fechasContenidoHasta,
 }: Props) {
   const def = AREA_DEFS[area]
   // Lista completa de estados (para lógica de transiciones / dominantState).
@@ -1005,6 +1012,37 @@ export default function TableroPipeline({
                                       )
                                     })()}
                                   </div>
+
+                                  {/* Badge "🔥 Xd de atraso" — solo en copys, cuando hay próxima grabación prevista
+                                       y el script no está listo. Calcula desde fecha_grabacion_confirmada / tentativa
+                                       o (fecha "Contenido hasta" − 14d). 21d de anticipación SLA. */}
+                                  {area === 'copys' && batch.dominantState !== 'LISTO PARA GRABAR' && (() => {
+                                    const rec = recursosByLoop?.get(batch.key) ?? null
+                                    const fc = fechasContenidoHasta?.get(batch.cliente.id) ?? null
+                                    const fechaGrab = fechaGrabacionPrevista(
+                                      rec?.fecha_grabacion_confirmada,
+                                      rec?.fecha_grabacion_tentativa,
+                                      fc?.fecha ?? null,
+                                    )
+                                    const dias = diasAtrasoCopys(fechaGrab)
+                                    if (dias <= 0) return null
+                                    const tipoFecha = rec?.fecha_grabacion_confirmada ? 'confirmada' : rec?.fecha_grabacion_tentativa ? 'tentativa' : 'estimada'
+                                    return (
+                                      <div
+                                        title={`Próxima grabación ${tipoFecha}: ${fechaGrab?.toLocaleDateString('es-AR')}. Los scripts deberían estar listos hace ${dias} días (SLA: 21d de anticipación).`}
+                                        style={{
+                                          fontSize: 9, fontWeight: 700,
+                                          padding: '2px 5px', borderRadius: 3,
+                                          background: 'rgba(245,54,92,.15)',
+                                          color: '#f5365c',
+                                          border: '1px solid rgba(245,54,92,.40)',
+                                          marginBottom: 4, display: 'inline-block',
+                                          textTransform: 'uppercase' as const, letterSpacing: 0.3,
+                                        }}>
+                                        🔥 {dias}d de atraso
+                                      </div>
+                                    )
+                                  })()}
 
                                   {/* Badge "🔒 X deudas pendientes" — gate: este cliente tiene deudas asignadas al ciclo */}
                                   {(deudasPendientesByCliente?.get(batch.cliente.id) ?? 0) > 0 && (

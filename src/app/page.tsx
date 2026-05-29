@@ -244,6 +244,13 @@ export default function Home() {
     return m
   }, [recursosAgencia, clientes, cycleFilter])
 
+  // Map<`cliente_id::ciclo_mes`, recursos> para acceso rápido en pipeline (fecha_grabacion_*)
+  const recursosByLoop = useMemo(() => {
+    const m = new Map<string, ClienteCicloRecursos>()
+    for (const r of recursosAgencia) m.set(`${r.cliente_id}::${r.ciclo_mes}`, r)
+    return m
+  }, [recursosAgencia])
+
   // Map<cliente_id, count> de deudas pendientes ASIGNADAS al ciclo actual del filtro.
   // Usado por CycleHeader para no marcar como "completado" a clientes con deudas pendientes.
   const deudasPendientesByClienteEnCiclo = useMemo(() => {
@@ -654,13 +661,13 @@ export default function Home() {
               <TableroGeneral clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} tipoFilter={tipoFilter} estadoFilter={estadoFilter} fechasContenidoHasta={fechasContenidoHasta} onUpdateFecha={async (clienteId, fecha) => { const cycle = cycleFilter ?? currentCicloMes(); await supabase.from('cliente_ciclo_recursos').upsert({ agencia_id: agenciaId, cliente_id: clienteId, ciclo_mes: cycle, fecha_ultimo_contenido_subido: fecha, updated_at: new Date().toISOString() }, { onConflict: 'cliente_id,ciclo_mes' }); loadRecursosAgencia() }} />
             </>
           ) : view === 'copys' ? (
-            <TableroPipeline area="copys" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} />
+            <TableroPipeline area="copys" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} recursosByLoop={recursosByLoop} fechasContenidoHasta={fechasContenidoHasta} />
           ) : view === 'grab' ? (
-            <TableroPipeline area="grab" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} />
+            <TableroPipeline area="grab" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} recursosByLoop={recursosByLoop} fechasContenidoHasta={fechasContenidoHasta} />
           ) : view === 'grab-calendar' ? (
             <TableroGrabCalendar agenciaId={agenciaId} clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} />
           ) : view === 'subida' ? (
-            <TableroPipeline area="subida" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} />
+            <TableroPipeline area="subida" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} recursosByLoop={recursosByLoop} fechasContenidoHasta={fechasContenidoHasta} />
           ) : view === 'reporte' ? (
             <TableroPipeline
               area="anuncios"
@@ -673,6 +680,8 @@ export default function Home() {
               cycleFilter={cycleFilter}
               deudasPendientesByCliente={deudasPendientesByClienteEnCiclo}
               equipo={equipo}
+              recursosByLoop={recursosByLoop}
+              fechasContenidoHasta={fechasContenidoHasta}
               titleOverride={{
                 emoji: '📊',
                 title: 'Reportes · Cierre de ciclo',
@@ -724,9 +733,9 @@ export default function Home() {
           ) : view === 'produccion-legacy' ? (
             <TableroProduccion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} ownerFilter={ownerFilter} onOwnerFilterChange={setOwnerFilter} />
           ) : view === 'edicion' ? (
-            <TableroPipeline area="edit" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} />
+            <TableroPipeline area="edit" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} recursosByLoop={recursosByLoop} fechasContenidoHasta={fechasContenidoHasta} />
           ) : view === 'diseno' ? (
-            <TableroPipeline area="diseno" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} />
+            <TableroPipeline area="diseno" agenciaId={agenciaId} currentUser={currentUser} clientes={clientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} cycleFilter={cycleFilter} deudasPendientesByCliente={deudasPendientesByClienteEnCiclo} equipo={equipo} recursosByLoop={recursosByLoop} fechasContenidoHasta={fechasContenidoHasta} />
           ) : view === 'edicion-legacy' ? (
             <TableroEdicion clientes={filteredClientes} owners={owners} equipo={equipo} onUpdate={loadData} />
           ) : view === 'diseno-legacy' ? (
