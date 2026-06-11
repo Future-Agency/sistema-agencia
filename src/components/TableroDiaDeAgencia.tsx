@@ -1,9 +1,16 @@
 'use client'
-import { useMemo, useState } from 'react'
-import type { Cliente, Equipo, Owner, Pieza } from '@/lib/supabase'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase, type Cliente, type Equipo, type EstadoLog, type Owner, type Pieza } from '@/lib/supabase'
 import type { UserArea } from '@/lib/users'
 import { AREA_DEFS } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
+
+function ymd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 type Props = {
   clientes: Cliente[]
@@ -50,6 +57,18 @@ type BatchActivo = {
 }
 
 export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, onSelectCliente }: Props) {
+  const [diaSel, setDiaSel] = useState<string>(() => ymd(new Date()))
+  const esHoy = diaSel === ymd(new Date())
+  const [logs, setLogs] = useState<EstadoLog[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const loadLogs = useCallback(async () => {
+    setLoadingLogs(true)
+    const { data } = await supabase.from('estado_log').select('*').gte('changed_at', `${diaSel}T00:00:00`).order('changed_at', { ascending: false })
+    setLogs((data ?? []) as EstadoLog[])
+    setLoadingLogs(false)
+  }, [diaSel])
+  useEffect(() => { loadLogs() }, [loadLogs])
+  void logs; void loadingLogs; void setDiaSel;
   const [filtroMiembro, setFiltroMiembro] = useState<string>('') // equipo.id o 'owner:XXX' o ''
   const [filtroArea, setFiltroArea] = useState<UserArea | ''>('')
 
@@ -144,7 +163,10 @@ export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, 
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>📅 Día de la Agencia</h2>
           <p style={{ fontSize: 12, color: '#6a6a80', margin: 0, marginTop: 2 }}>
-            Qué está haciendo cada miembro hoy. <strong>{totalBatches}</strong> tareas activas en <strong>{totalMiembros}</strong> personas.
+            {esHoy
+              ? <>Qué está haciendo cada miembro hoy. <strong>{totalBatches}</strong> tareas activas en <strong>{totalMiembros}</strong> personas.</>
+              : <>Actividad del <strong>{new Date(diaSel).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>. <strong>{logs.length}</strong> movimientos registrados.</>
+            }
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
