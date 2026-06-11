@@ -1,6 +1,6 @@
 'use client'
-import { useMemo, useState } from 'react'
-import type { Cliente, Equipo, Owner, Pieza } from '@/lib/supabase'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase, type Cliente, type Equipo, type EstadoLog, type Owner, type Pieza } from '@/lib/supabase'
 import type { UserArea } from '@/lib/users'
 import { AREA_DEFS } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
@@ -11,6 +11,33 @@ type Props = {
   owners: Owner[]
   piezas: Pieza[]
   onSelectCliente?: (c: Cliente) => void
+  agenciaId?: string
+}
+
+function ymd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d)
+  r.setDate(r.getDate() + n)
+  return r
+}
+
+function areaFromEstado(estado: string): UserArea | null {
+  const upper = (estado || '').toUpperCase()
+  for (const a of ['copys', 'grab', 'edit', 'diseno', 'subida', 'anuncios'] as UserArea[]) {
+    if (AREA_DEFS[a].states.some(s => s.label.toUpperCase() === upper)) return a
+  }
+  return null
+}
+
+const AREA_COLOR: Record<UserArea, string> = {
+  copys: '#5e72e4', grab: '#f5a623', edit: '#fb6340',
+  diseno: '#ec4ad8', subida: '#00d97e', anuncios: '#11cdef',
 }
 
 const AREA_LABEL: Record<UserArea, string> = {
@@ -49,9 +76,30 @@ type BatchActivo = {
   asignadoId: string | null
 }
 
-export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, onSelectCliente }: Props) {
+export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, onSelectCliente, agenciaId }: Props) {
   const [filtroMiembro, setFiltroMiembro] = useState<string>('') // equipo.id o 'owner:XXX' o ''
   const [filtroArea, setFiltroArea] = useState<UserArea | ''>('')
+  // Selector de día. ymd(hoy) por default. Si el usuario se mueve a otro día,
+  // muestra el historial de actividad en lugar del estado actual.
+  const [diaSel, setDiaSel] = useState<string>(() => ymd(new Date()))
+  const esHoy = diaSel === ymd(new Date())
+  const [logs, setLogs] = useState<EstadoLog[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+
+  // Cargar logs del día seleccionado (ventana 24h)
+  const loadLogs = useCallback(async () => {
+    setLoadingLogs(true)
+    const start = `${diaSel}T00:00:00`
+    const end = `${ymd(addDays(new Date(diaSel), 1))}T00:00:00`
+    const { data } = await supabase
+      .from('estado_log')
+      .select('*')
+      .gte('changed_at', start).lt('changed_at', end)
+      .order('changed_at', { ascending: false })
+    setLogs((data ?? []) as EstadoLog[])
+    setLoadingLogs(false)
+  }, [diaSel])
+  useEffect(() => { loadLogs() }, [loadLogs])
 
   const clienteById = useMemo(() => new Map(clientes.map(c => [c.id, c])), [clientes])
   const ownerById = useMemo(() => new Map(owners.map(o => [o.id, o])), [owners])
@@ -144,7 +192,10 @@ export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, 
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>📅 Día de la Agencia</h2>
           <p style={{ fontSize: 12, color: '#6a6a80', margin: 0, marginTop: 2 }}>
-            Qué está haciendo cada miembro hoy. <strong>{totalBatches}</strong> tareas activas en <strong>{totalMiembros}</strong> personas.
+            {esHoy
+              ? <>Qué está haciendo cada miembro hoy. <strong>{totalBatches}</strong> tareas activas en <strong>{totalMiembros}</strong> personas.</>
+              : <>Actividad del <strong>{new Date(diaSel).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>. <strong>{logs.length}</strong> movimientos registrados.</>
+            }
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
@@ -166,12 +217,41 @@ export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, 
         </div>
       </div>
 
-      {visibles.length === 0 ? (
+      {/* Selector de día: hoy / día anterior / siguiente / picker */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
+        background: '#1a1a28', border: '1px solid #2a2a40', borderRadius: 8, padding: 8,
+      }}>
+        <button onClick={() => setDiaSel(ymd(addDays(new Date(diaSel), -1)))}
+          style={navBtn} title="Día anterior">←</button>
+        <input type="date" value={diaSel} onChange={e => setDiaSel(e.target.value)}
+          max={ymd(new Date())}
+          style={{ background: '#0a0a0f', border: '1px solid #2a2a40', borderRadius: 6, color: '#e8e8f0', fontSize: 12, padding: '6px 10px' }} />
+        <button onClick={() => setDiaSel(ymd(addDays(new Date(diaSel), 1)))}
+          disabled={esHoy}
+          style={{ ...navBtn, opacity: esHoy ? 0.4 : 1, cursor: esHoy ? 'not-allowed' : 'pointer' }}
+          title="Día siguiente">→</button>
+        {!esHoy && (
+          <button onClick={() => setDiaSel(ymd(new Date()))}
+            style={{ ...navBtn, background: '#5e72e4', color: '#fff', border: 'none', padding: '6px 12px' }}>HOY</button>
+        )}
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 11, color: '#6a6a80' }}>
+          {esHoy ? '🟢 Vista en tiempo real' : `📜 Historial (${logs.length} movimientos)`}
+        </span>
+      </div>
+
+      {/* Si NO es hoy: mostrar historial de actividad del día */}
+      {!esHoy && (
+        <div>(HistorialDia placeholder)</div>
+      )}
+
+      {esHoy && visibles.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center' as const, color: '#6a6a80' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🌴</div>
           <p style={{ fontSize: 13 }}>Sin tareas activas con los filtros actuales.</p>
         </div>
-      ) : (
+      ) : esHoy ? (
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
           {(() => { const arr: Array<[string, BatchActivo[]]> = []; porMiembro.forEach((v, k) => arr.push([k, v])); return arr })().map(([k, list]) => {
             const g = grupoLabel(k)
@@ -240,3 +320,8 @@ const selectStyle: React.CSSProperties = {
   background: '#1a1a28', border: '1px solid #2a2a40', borderRadius: 6,
   color: '#e8e8f0', fontSize: 12, padding: '6px 10px', cursor: 'pointer',
 }
+const navBtn: React.CSSProperties = {
+  background: '#0a0a0f', border: '1px solid #2a2a40', borderRadius: 6,
+  color: '#a0a0b8', fontSize: 14, padding: '4px 10px', cursor: 'pointer', fontWeight: 700,
+}
+
