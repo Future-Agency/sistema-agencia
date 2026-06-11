@@ -189,6 +189,8 @@ export const VIEW_VISIBILITY: Record<string, ViewVisibility> = {
   'plan-produccion': 'all',
   // Alertas urgentes globales
   alertas: 'all',
+  // Acción "Crear ciclo completo" — solo admin / semi-admin
+  'crear-ciclo': 'admin+semi',
   // Vistas analíticas — solo admin
   gestion:      'admin',
   diagnostico:  'admin',
