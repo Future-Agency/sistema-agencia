@@ -1,9 +1,26 @@
 'use client'
-import { useMemo, useState } from 'react'
-import type { Cliente, Equipo, Owner, Pieza } from '@/lib/supabase'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase, type Cliente, type Equipo, type EstadoLog, type Owner, type Pieza } from '@/lib/supabase'
 import type { UserArea } from '@/lib/users'
 import { AREA_DEFS } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
+
+function ymd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const AREA_COLOR: Record<UserArea, string> = {
+  copys: '#5e72e4', grab: '#f5a623', edit: '#fb6340',
+  diseno: '#ec4ad8', subida: '#00d97e', anuncios: '#11cdef',
+}
+
+// Use to avoid unused warnings
+void ymd; void AREA_COLOR; void supabase; void useCallback; void useEffect;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _EstadoLogUnused: EstadoLog | null = null
 
 type Props = {
   clientes: Cliente[]
