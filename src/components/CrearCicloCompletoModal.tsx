@@ -18,6 +18,11 @@ type ClientePreview = {
   ultimaGrabacion: Date | null
   fechaTentativaProyectada: Date
   yaTieneBatch: boolean
+  /** Si ya tiene fecha confirmada o tentativa cargada para el ciclo destino */
+  yaTieneFecha: boolean
+  /** La fecha existente (si yaTieneFecha=true) */
+  fechaExistente: Date | null
+  fechaExistenteTipo: 'confirmada' | 'tentativa' | null
 }
 
 export default function CrearCicloCompletoModal({ agenciaId, clientes, currentUser, onClose, onDone }: Props) {
@@ -56,30 +61,48 @@ export default function CrearCicloCompletoModal({ agenciaId, clientes, currentUs
       const p = parseCicloMes(cicloDestino)
       return p ? new Date(p.year, p.monthIndex, 1) : new Date()
     })()
-    // Última grabación por cliente (la más reciente, confirmada o tentativa)
+    // Última grabación por cliente (la más reciente, confirmada o tentativa de cualquier ciclo)
     const ultimaByCliente = new Map<number, Date>()
+    // Recurso del ciclo destino (si existe) por cliente — para respetar fechas ya cargadas
+    const recursoDestinoByCliente = new Map<number, ClienteCicloRecursos>()
     for (const r of recursosAgencia) {
       const v = r.fecha_grabacion_confirmada || r.fecha_grabacion_tentativa
-      if (!v) continue
-      const d = new Date(v)
-      if (isNaN(d.getTime())) continue
-      const prev = ultimaByCliente.get(r.cliente_id)
-      if (!prev || d > prev) ultimaByCliente.set(r.cliente_id, d)
+      if (v) {
+        const d = new Date(v)
+        if (!isNaN(d.getTime())) {
+          const prev = ultimaByCliente.get(r.cliente_id)
+          if (!prev || d > prev) ultimaByCliente.set(r.cliente_id, d)
+        }
+      }
+      if (r.ciclo_mes === cicloDestino) recursoDestinoByCliente.set(r.cliente_id, r)
     }
     return clientes
       .filter(c => c.activo && !c.standby)
       .map(c => {
         const ultima = ultimaByCliente.get(c.id) ?? null
-        // Fecha tentativa = ultima + offset, o mediados del ciclo destino si no hay
+        const recDestino = recursoDestinoByCliente.get(c.id) ?? null
+        const fechaExistenteRaw = recDestino?.fecha_grabacion_confirmada || recDestino?.fecha_grabacion_tentativa || null
+        const fechaExistente = fechaExistenteRaw ? new Date(fechaExistenteRaw) : null
+        const fechaExistenteTipo: ClientePreview['fechaExistenteTipo'] =
+          recDestino?.fecha_grabacion_confirmada ? 'confirmada' :
+          recDestino?.fecha_grabacion_tentativa ? 'tentativa' : null
+        // Tentativa proyectada (solo se usa si NO hay fecha existente)
         let tentativa: Date
         if (ultima) {
           tentativa = new Date(ultima); tentativa.setDate(tentativa.getDate() + offsetDias)
-          // Si la tentativa cae ANTES del primer día del ciclo destino, empujar al ciclo
           if (tentativa < cicloDestinoDate) tentativa = new Date(cicloDestinoDate.getTime() + 14 * 86400000)
         } else {
           tentativa = new Date(cicloDestinoDate.getTime() + 14 * 86400000)
         }
-        return { cliente: c, ultimaGrabacion: ultima, fechaTentativaProyectada: tentativa, yaTieneBatch: !!piezasExistentes.get(c.id) }
+        return {
+          cliente: c,
+          ultimaGrabacion: ultima,
+          fechaTentativaProyectada: tentativa,
+          yaTieneBatch: !!piezasExistentes.get(c.id),
+          yaTieneFecha: !!fechaExistente,
+          fechaExistente,
+          fechaExistenteTipo,
+        }
       })
   }, [clientes, recursosAgencia, piezasExistentes, cicloDestino, offsetDias])
 
@@ -95,20 +118,29 @@ export default function CrearCicloCompletoModal({ agenciaId, clientes, currentUs
     let ok = 0, fail = 0
     for (const p of aGenerar) {
       try {
-        // 1. generar piezas (skip si ya existen)
+        // 1. Generar piezas faltantes (skip si ya existen — idempotente)
         const r = await generateBatch({ agenciaId, cliente: p.cliente, cicloMes: cicloDestino })
         if (r.error) { fail++; mensajes.push(`✗ ${p.cliente.nombre}: ${r.error}`); continue }
-        // 2. upsert recursos con fecha tentativa
-        const ymd = p.fechaTentativaProyectada.toISOString().slice(0, 10)
-        await supabase.from('cliente_ciclo_recursos').upsert({
-          agencia_id: agenciaId,
-          cliente_id: p.cliente.id,
-          ciclo_mes: cicloDestino,
-          fecha_grabacion_tentativa: ymd,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'cliente_id,ciclo_mes' })
+        // 2. Fecha tentativa: SOLO upsert si NO hay fecha existente (respeta lo que ya hay).
+        const partes: string[] = []
+        if (r.inserted > 0) partes.push(`+${r.inserted} piezas`)
+        if (r.existing > 0 && r.inserted === 0) partes.push('piezas ya existían')
+        else if (r.existing > 0) partes.push(`${r.existing} ya existían`)
+        if (p.yaTieneFecha) {
+          partes.push(`fecha ${p.fechaExistenteTipo} respetada (${p.fechaExistente?.toLocaleDateString('es-AR')})`)
+        } else {
+          const ymd = p.fechaTentativaProyectada.toISOString().slice(0, 10)
+          await supabase.from('cliente_ciclo_recursos').upsert({
+            agencia_id: agenciaId,
+            cliente_id: p.cliente.id,
+            ciclo_mes: cicloDestino,
+            fecha_grabacion_tentativa: ymd,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'cliente_id,ciclo_mes' })
+          partes.push(`grab tentativa ${ymd}`)
+        }
         ok++
-        mensajes.push(`✓ ${p.cliente.nombre}: ${r.inserted} piezas, grab tentativa ${ymd}`)
+        mensajes.push(`✓ ${p.cliente.nombre}: ${partes.join(', ')}`)
       } catch (e: unknown) {
         fail++
         mensajes.push(`✗ ${p.cliente.nombre}: ${(e as Error).message}`)
@@ -163,10 +195,14 @@ export default function CrearCicloCompletoModal({ agenciaId, clientes, currentUs
           <div style={{ padding: 24, textAlign: 'center' as const, color: '#6a6a80' }}>Cargando previsualización…</div>
         ) : (
           <>
-            <div style={{ fontSize: 11, color: '#a0a0b8', marginBottom: 6 }}>
+            <div style={{ fontSize: 11, color: '#a0a0b8', marginBottom: 6, lineHeight: 1.5 }}>
               Vas a procesar <strong>{aGenerar.length}</strong> cliente{aGenerar.length === 1 ? '' : 's'}.
-              {conBatch > 0 && <> <span style={{ color: '#f5a623' }}>{conBatch} ya tiene piezas en este ciclo</span> (se completa lo faltante).</>}
+              {conBatch > 0 && <> <span style={{ color: '#f5a623' }}>{conBatch} ya tienen piezas</span> (se completa solo lo faltante, no se reinicia).</>}
               {sinBatch > 0 && <> <span style={{ color: '#00d97e' }}>{sinBatch} batches nuevos</span>.</>}
+              <br />
+              <span style={{ color: '#6a6a80' }}>
+                Las fechas existentes (confirmadas o tentativas) <strong>NO se sobreescriben</strong> — solo se agrega tentativa donde no hay fecha.
+              </span>
             </div>
             <div style={{ maxHeight: 280, overflowY: 'auto' as const, border: '1px solid #2a2a40', borderRadius: 6, marginBottom: 12 }}>
               {previews.map(p => {
@@ -192,11 +228,19 @@ export default function CrearCicloCompletoModal({ agenciaId, clientes, currentUs
                       </div>
                     </div>
                     {p.yaTieneBatch && (
-                      <span style={{ fontSize: 9, color: '#f5a623', background: 'rgba(245,166,35,.10)', padding: '2px 6px', borderRadius: 3, fontWeight: 700 }}>YA HAY BATCH</span>
+                      <span style={{ fontSize: 9, color: '#f5a623', background: 'rgba(245,166,35,.10)', padding: '2px 6px', borderRadius: 3, fontWeight: 700 }}>PIEZAS YA</span>
                     )}
-                    <span style={{ fontSize: 11, color: '#5e72e4', fontWeight: 700 }}>
-                      → {p.fechaTentativaProyectada.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
-                    </span>
+                    {p.yaTieneFecha ? (
+                      <span title={`Ya tiene fecha ${p.fechaExistenteTipo}, se respeta sin tocar`}
+                        style={{ fontSize: 11, color: '#6a6a80', fontWeight: 600, fontStyle: 'italic' as const }}>
+                        ✓ {p.fechaExistente!.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
+                        <span style={{ fontSize: 9, marginLeft: 4 }}>({p.fechaExistenteTipo})</span>
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#5e72e4', fontWeight: 700 }}>
+                        → {p.fechaTentativaProyectada.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
+                      </span>
+                    )}
                   </div>
                 )
               })}
