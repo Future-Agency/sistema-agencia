@@ -5,6 +5,13 @@ import type { UserArea } from '@/lib/users'
 import { AREA_DEFS } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
 
+function ymd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 type Props = {
   clientes: Cliente[]
   equipo: Equipo[]
@@ -50,6 +57,8 @@ type BatchActivo = {
 }
 
 export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, onSelectCliente }: Props) {
+  const [diaSel] = useState<string>(() => ymd(new Date()))
+  const esHoy = diaSel === ymd(new Date())
   const [filtroMiembro, setFiltroMiembro] = useState<string>('') // equipo.id o 'owner:XXX' o ''
   const [filtroArea, setFiltroArea] = useState<UserArea | ''>('')
 
@@ -166,12 +175,13 @@ export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, 
         </div>
       </div>
 
-      {visibles.length === 0 ? (
+      {!esHoy && <div>Historial placeholder</div>}
+      {esHoy && visibles.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center' as const, color: '#6a6a80' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🌴</div>
           <p style={{ fontSize: 13 }}>Sin tareas activas con los filtros actuales.</p>
         </div>
-      ) : (
+      ) : esHoy ? (
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
           {(() => { const arr: Array<[string, BatchActivo[]]> = []; porMiembro.forEach((v, k) => arr.push([k, v])); return arr })().map(([k, list]) => {
             const g = grupoLabel(k)
