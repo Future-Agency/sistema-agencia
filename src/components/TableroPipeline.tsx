@@ -429,20 +429,6 @@ export default function TableroPipeline({
       .in('id', ids)
     if (error) return { ok: false, error: error.message }
 
-    // Log de actividad: registrar quién hizo la transición y cuándo.
-    // Sin esto no se puede ver "qué hizo X persona el día Y" en Día de la Agencia.
-    try {
-      await supabase.from('estado_log').insert({
-        cliente_id: batch.cliente.id,
-        ciclo_mes: batch.cicloMes,
-        estado_anterior: batch.dominantState,
-        estado_nuevo: toState,
-        changed_by: currentUser.name,
-      })
-    } catch (logErr) {
-      console.warn('[estado_log] no se pudo loggear:', logErr)
-    }
-
     // Si es cierre de área, guardar todo en recursos del ciclo
     const cfg = AREA_CLOSE_CONFIG[area]
     if (closeData && toState === cfg.closeState) {
