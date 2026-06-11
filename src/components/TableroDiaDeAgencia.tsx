@@ -50,6 +50,7 @@ type BatchActivo = {
 }
 
 export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, onSelectCliente }: Props) {
+  const [diaSel, setDiaSel] = useState<string>('today')
   const [filtroMiembro, setFiltroMiembro] = useState<string>('') // equipo.id o 'owner:XXX' o ''
   const [filtroArea, setFiltroArea] = useState<UserArea | ''>('')
 
