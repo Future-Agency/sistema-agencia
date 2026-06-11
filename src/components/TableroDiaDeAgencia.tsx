@@ -1,9 +1,22 @@
 'use client'
-import { useMemo, useState } from 'react'
-import type { Cliente, Equipo, Owner, Pieza } from '@/lib/supabase'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase, type Cliente, type Equipo, type EstadoLog, type Owner, type Pieza } from '@/lib/supabase'
 import type { UserArea } from '@/lib/users'
 import { AREA_DEFS } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
+
+function ymd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d)
+  r.setDate(r.getDate() + n)
+  return r
+}
 
 type Props = {
   clientes: Cliente[]
@@ -50,6 +63,19 @@ type BatchActivo = {
 }
 
 export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, onSelectCliente }: Props) {
+  const [diaSel, setDiaSel] = useState<string>(() => ymd(new Date()))
+  const [logs, setLogs] = useState<EstadoLog[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const loadLogs = useCallback(async () => {
+    setLoadingLogs(true)
+    const start = `${diaSel}T00:00:00`
+    const end = `${ymd(addDays(new Date(diaSel), 1))}T00:00:00`
+    const { data } = await supabase.from('estado_log').select('*').gte('changed_at', start).lt('changed_at', end).order('changed_at', { ascending: false })
+    setLogs((data ?? []) as EstadoLog[])
+    setLoadingLogs(false)
+  }, [diaSel])
+  useEffect(() => { loadLogs() }, [loadLogs])
+  void logs; void loadingLogs;
   const [filtroMiembro, setFiltroMiembro] = useState<string>('') // equipo.id o 'owner:XXX' o ''
   const [filtroArea, setFiltroArea] = useState<UserArea | ''>('')
 
