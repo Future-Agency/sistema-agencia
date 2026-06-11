@@ -1,9 +1,22 @@
 'use client'
-import { useMemo, useState } from 'react'
-import type { Cliente, Equipo, Owner, Pieza } from '@/lib/supabase'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase, type Cliente, type Equipo, type EstadoLog, type Owner, type Pieza } from '@/lib/supabase'
 import type { UserArea } from '@/lib/users'
 import { AREA_DEFS } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
+
+function ymd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d)
+  r.setDate(r.getDate() + n)
+  return r
+}
 
 type Props = {
   clientes: Cliente[]
@@ -50,6 +63,20 @@ type BatchActivo = {
 }
 
 export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, onSelectCliente }: Props) {
+  const [diaSel, setDiaSel] = useState<string>(() => ymd(new Date()))
+  const esHoy = diaSel === ymd(new Date())
+  const [logs, setLogs] = useState<EstadoLog[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const loadLogs = useCallback(async () => {
+    setLoadingLogs(true)
+    const start = `${diaSel}T00:00:00`
+    const end = `${ymd(addDays(new Date(diaSel), 1))}T00:00:00`
+    const { data } = await supabase.from('estado_log').select('*').gte('changed_at', start).lt('changed_at', end).order('changed_at', { ascending: false })
+    setLogs((data ?? []) as EstadoLog[])
+    setLoadingLogs(false)
+  }, [diaSel])
+  useEffect(() => { loadLogs() }, [loadLogs])
+  void logs; void loadingLogs;
   const [filtroMiembro, setFiltroMiembro] = useState<string>('') // equipo.id o 'owner:XXX' o ''
   const [filtroArea, setFiltroArea] = useState<UserArea | ''>('')
 
@@ -166,6 +193,12 @@ export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, 
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, background: '#1a1a28', border: '1px solid #2a2a40', borderRadius: 8, padding: 8 }}>
+        <button onClick={() => setDiaSel(ymd(addDays(new Date(diaSel), -1)))} style={{ background: '#0a0a0f', color: '#a0a0b8', border: '1px solid #2a2a40', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>←</button>
+        <input type="date" value={diaSel} onChange={e => setDiaSel(e.target.value)} max={ymd(new Date())} style={{ background: '#0a0a0f', border: '1px solid #2a2a40', borderRadius: 6, color: '#e8e8f0', fontSize: 12, padding: '6px 10px' }} />
+        <button onClick={() => setDiaSel(ymd(addDays(new Date(diaSel), 1)))} disabled={esHoy} style={{ background: '#0a0a0f', color: '#a0a0b8', border: '1px solid #2a2a40', borderRadius: 6, padding: '4px 10px', cursor: esHoy ? 'not-allowed' : 'pointer', opacity: esHoy ? 0.4 : 1 }}>→</button>
+        {!esHoy && <button onClick={() => setDiaSel(ymd(new Date()))} style={{ background: '#5e72e4', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer' }}>HOY</button>}
+      </div>
       {visibles.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center' as const, color: '#6a6a80' }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🌴</div>
