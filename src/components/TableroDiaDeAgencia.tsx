@@ -1,9 +1,23 @@
 'use client'
-import { useMemo, useState } from 'react'
-import type { Cliente, Equipo, Owner, Pieza } from '@/lib/supabase'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase, type Cliente, type Equipo, type EstadoLog, type Owner, type Pieza } from '@/lib/supabase'
 import type { UserArea } from '@/lib/users'
 import { AREA_DEFS } from '@/lib/areaStates'
 import { PIPELINE_BY_TIPO, diasEnEstadoBatch, colorPorDiasEnEstado } from '@/lib/piezas'
+import HistorialDiaPanel from './HistorialDiaPanel'
+
+function ymd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d)
+  r.setDate(r.getDate() + n)
+  return r
+}
 
 type Props = {
   clientes: Cliente[]
@@ -52,6 +66,22 @@ type BatchActivo = {
 export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, onSelectCliente }: Props) {
   const [filtroMiembro, setFiltroMiembro] = useState<string>('') // equipo.id o 'owner:XXX' o ''
   const [filtroArea, setFiltroArea] = useState<UserArea | ''>('')
+  const [diaSel, setDiaSel] = useState<string>(() => ymd(new Date()))
+  const esHoy = diaSel === ymd(new Date())
+  const [logs, setLogs] = useState<EstadoLog[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const loadLogs = useCallback(async () => {
+    setLoadingLogs(true)
+    const start = `${diaSel}T00:00:00`
+    const end = `${ymd(addDays(new Date(diaSel), 1))}T00:00:00`
+    const { data } = await supabase
+      .from('estado_log').select('*')
+      .gte('changed_at', start).lt('changed_at', end)
+      .order('changed_at', { ascending: false })
+    setLogs((data ?? []) as EstadoLog[])
+    setLoadingLogs(false)
+  }, [diaSel])
+  useEffect(() => { loadLogs() }, [loadLogs])
 
   const clienteById = useMemo(() => new Map(clientes.map(c => [c.id, c])), [clientes])
   const ownerById = useMemo(() => new Map(owners.map(o => [o.id, o])), [owners])
@@ -138,6 +168,28 @@ export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, 
   const totalBatches = visibles.length
   const totalMiembros = porMiembro.size
 
+  // Render principal: pre-calculado para evitar ternarios anidados (bundler issue)
+  let mainContent: React.ReactNode = null
+  if (!esHoy) {
+    mainContent = (
+      <HistorialDiaPanel
+        logs={logs}
+        loading={loadingLogs}
+        clienteById={clienteById}
+        equipo={equipo}
+        owners={owners}
+        filtroMiembro={filtroMiembro}
+      />
+    )
+  } else if (visibles.length === 0) {
+    mainContent = (
+      <div style={{ padding: 32, textAlign: 'center' as const, color: '#6a6a80' }}>
+        <div style={{ fontSize: 36, marginBottom: 8 }}>🌴</div>
+        <p style={{ fontSize: 13 }}>Sin tareas activas con los filtros actuales.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap' as const, gap: 10 }}>
@@ -166,12 +218,31 @@ export default function TableroDiaDeAgencia({ clientes, equipo, owners, piezas, 
         </div>
       </div>
 
-      {visibles.length === 0 ? (
-        <div style={{ padding: 32, textAlign: 'center' as const, color: '#6a6a80' }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>🌴</div>
-          <p style={{ fontSize: 13 }}>Sin tareas activas con los filtros actuales.</p>
-        </div>
-      ) : (
+      {/* Selector de día (← input date → + HOY) */}
+      <div style={{
+        display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14,
+        background: '#1a1a28', border: '1px solid #2a2a40', borderRadius: 8, padding: 8,
+      }}>
+        <button onClick={() => setDiaSel(ymd(addDays(new Date(diaSel), -1)))}
+          style={{ background: '#0a0a0f', color: '#a0a0b8', border: '1px solid #2a2a40', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontWeight: 700 }}>←</button>
+        <input type="date" value={diaSel} onChange={e => setDiaSel(e.target.value)} max={ymd(new Date())}
+          style={{ background: '#0a0a0f', border: '1px solid #2a2a40', borderRadius: 6, color: '#e8e8f0', fontSize: 12, padding: '6px 10px' }} />
+        <button onClick={() => setDiaSel(ymd(addDays(new Date(diaSel), 1)))}
+          disabled={esHoy}
+          style={{ background: '#0a0a0f', color: '#a0a0b8', border: '1px solid #2a2a40', borderRadius: 6, padding: '4px 10px', cursor: esHoy ? 'not-allowed' : 'pointer', opacity: esHoy ? 0.4 : 1, fontWeight: 700 }}>→</button>
+        {!esHoy && (
+          <button onClick={() => setDiaSel(ymd(new Date()))}
+            style={{ background: '#5e72e4', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontWeight: 700 }}>HOY</button>
+        )}
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 11, color: '#6a6a80' }}>
+          {esHoy ? '🟢 Vista en tiempo real' : `📜 Historial (${logs.length} movimientos)`}
+        </span>
+      </div>
+
+      {mainContent}
+
+      {esHoy && visibles.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>
           {(() => { const arr: Array<[string, BatchActivo[]]> = []; porMiembro.forEach((v, k) => arr.push([k, v])); return arr })().map(([k, list]) => {
             const g = grupoLabel(k)
