@@ -9,8 +9,9 @@ const AREA_COLOR: Record<UserArea, string> = {
   diseno: '#ec4ad8', subida: '#00d97e', anuncios: '#11cdef',
 }
 
-function areaFromEstado(estado: string): UserArea | null {
+function areaFromEstado(estado: string | null | undefined): UserArea | null {
   const upper = (estado || '').toUpperCase()
+  if (!upper) return null
   const areas: UserArea[] = ['copys', 'grab', 'edit', 'diseno', 'subida', 'anuncios']
   for (const a of areas) {
     if (AREA_DEFS[a].states.some(s => s.label.toUpperCase() === upper)) return a
