@@ -187,10 +187,6 @@ export const VIEW_VISIBILITY: Record<string, ViewVisibility> = {
   'dia-agencia': 'all',
   // Plan de Producción (vista priorizada de atrasos)
   'plan-produccion': 'all',
-  // Alertas urgentes globales
-  alertas: 'all',
-  // Acción "Crear ciclo completo" — solo admin / semi-admin
-  'crear-ciclo': 'admin+semi',
   // Vistas analíticas — solo admin
   gestion:      'admin',
   diagnostico:  'admin',
@@ -281,7 +277,6 @@ export const VIEW_TO_AREAS: Record<string, UserArea[] | null> = {
   deudas:  null,
   'dia-agencia': null,
   'plan-produccion': null,
-  alertas: null,
   metricas: null,
   equipo: null,
 }

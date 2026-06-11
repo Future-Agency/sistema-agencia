@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza, type DeudaContenido, type ClienteCicloRecursos, type FechaEspecial } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza, type DeudaContenido, type ClienteCicloRecursos } from '@/lib/supabase'
 import { indexPiezasByLoop, loopEstaCompletado, calcularFechaUltimoContenidoEstimada, primerDiaDelCiclo, planFromCliente } from '@/lib/piezas'
 import { Loading, Toast } from '@/components/ui'
 import ConfirmNuevoCicloModal from '@/components/ConfirmNuevoCicloModal'
@@ -34,8 +34,6 @@ import TableroPedidosClientes from '@/components/TableroPedidosClientes'
 import TableroDeudasContenido from '@/components/TableroDeudasContenido'
 import TableroDiaDeAgencia from '@/components/TableroDiaDeAgencia'
 import TableroPlanProduccion from '@/components/TableroPlanProduccion'
-import TableroAlertas from '@/components/TableroAlertas'
-import CrearCicloCompletoModal from '@/components/CrearCicloCompletoModal'
 import CycleSelector from '@/components/CycleSelector'
 import { currentCicloMes, nextCicloMes, comparteCiclo, cicloMesLabel, type CicloMes } from '@/lib/cycles'
 import EquipoModal from '@/components/EquipoModal'
@@ -57,7 +55,6 @@ export default function Home() {
   const [piezasAgencia, setPiezasAgencia] = useState<Pieza[]>([])
   const [deudasAgencia, setDeudasAgencia] = useState<DeudaContenido[]>([])
   const [recursosAgencia, setRecursosAgencia] = useState<ClienteCicloRecursos[]>([])
-  const [fechasAgencia, setFechasAgencia] = useState<FechaEspecial[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [ownerFilter, setOwnerFilter] = useState('')
@@ -196,16 +193,9 @@ export default function Home() {
   const loadRecursosAgencia = useCallback(async () => {
     const { data } = await supabase
       .from('cliente_ciclo_recursos')
-      .select('cliente_id, ciclo_mes, fecha_ultimo_contenido_subido, cantidad_contenidos_subidos, fecha_publicacion, fecha_grabacion_confirmada, fecha_grabacion_tentativa, pendiente_info_no_aplica, pendiente_info_link')
+      .select('cliente_id, ciclo_mes, fecha_ultimo_contenido_subido, cantidad_contenidos_subidos, fecha_publicacion')
       .eq('agencia_id', agenciaId)
     setRecursosAgencia((data ?? []) as ClienteCicloRecursos[])
-  }, [agenciaId])
-
-  // Carga global de fechas especiales (para alertas)
-  const loadFechasAgencia = useCallback(async () => {
-    const { data } = await supabase
-      .from('fechas_especiales').select('*').eq('agencia_id', agenciaId)
-    setFechasAgencia((data ?? []) as FechaEspecial[])
   }, [agenciaId])
 
   useEffect(() => {
@@ -215,10 +205,6 @@ export default function Home() {
   useEffect(() => {
     if (currentUser && agenciaId) loadRecursosAgencia()
   }, [currentUser, agenciaId, loadRecursosAgencia])
-
-  useEffect(() => {
-    if (currentUser && agenciaId) loadFechasAgencia()
-  }, [currentUser, agenciaId, loadFechasAgencia])
 
   // Listener: refrescar piezas + deudas + recursos cuando hay cambios cross-tab / realtime
   useEffect(() => {
@@ -292,7 +278,6 @@ export default function Home() {
 
   // Modal de confirmación pesada antes de mover masivamente todos los clientes al ciclo siguiente.
   const [showNuevoCicloModal, setShowNuevoCicloModal] = useState(false)
-  const [showCrearCicloCompletoModal, setShowCrearCicloCompletoModal] = useState(false)
   const nuevoCicloFrom = cycleFilter ?? currentCicloMes()
   const nuevoCicloTo = nextCicloMes(nuevoCicloFrom)
   const nuevoCicloAfectados = useMemo(
@@ -427,14 +412,10 @@ export default function Home() {
     )
   }
 
-  const allNavItems: Array<{ id: string; icon: string; label: string; action?: () => void }> = [
-    // Lo más importante: lo que hay que arreglar HOY (siempre arriba)
-    { id: 'alertas', icon: 'fa-triangle-exclamation', label: 'Alertas' },
+  const allNavItems = [
     // Vista general + flujo de producción (en orden del proceso)
     { id: 'general', icon: 'fa-th-large', label: 'Tablero General' },
     { id: 'produccion', icon: 'fa-clapperboard', label: 'Producción' },
-    // Planificación antes del pipeline: que se vea apenas mirás el menú
-    { id: 'crear-ciclo', icon: 'fa-calendar-plus', label: 'Crear ciclo completo', action: () => setShowCrearCicloCompletoModal(true) },
     { id: 'owners', icon: 'fa-user-tie', label: 'Owners' },
     { id: 'copys', icon: 'fa-pen-nib', label: 'Copys (pipeline)' },
     { id: 'grab', icon: 'fa-video', label: 'Grabaciones' },
@@ -496,15 +477,13 @@ export default function Home() {
           <div className="nav-label">Tableros</div>
           {navItems.map(item => {
             const isExternalMisTareas = item.id === 'mistareas'
-            const isAction = !!item.action
             return (
-              <div key={item.id} className={`nav-item ${!isAction && view === item.id && !selectedCliente ? 'active' : ''}`}
+              <div key={item.id} className={`nav-item ${view === item.id && !selectedCliente ? 'active' : ''}`}
                 onClick={() => {
                   if (isExternalMisTareas) {
                     window.open('https://future-gestor.vercel.app/dashboard', '_blank', 'noopener,noreferrer')
                     return
                   }
-                  if (isAction) { item.action!(); return }
                   setView(item.id); setSelectedCliente(null)
                   if (isMobile) setSidebarCollapsed(true)  // auto-cerrar drawer en mobile
                 }}>
@@ -733,8 +712,6 @@ export default function Home() {
             <TableroDiaDeAgencia clientes={clientes} equipo={equipo} owners={owners} piezas={piezasAgencia} onSelectCliente={setSelectedCliente} />
           ) : view === 'plan-produccion' ? (
             <TableroPlanProduccion clientes={clientes} piezas={piezasAgencia} recursosByLoop={recursosByLoop} fechasContenidoHasta={fechasContenidoHasta} cicloActivo={cycleFilter ?? currentCicloMes()} onSelectCliente={setSelectedCliente} />
-          ) : view === 'alertas' ? (
-            <TableroAlertas clientes={clientes} piezas={piezasAgencia} deudas={deudasAgencia} recursos={recursosAgencia} fechas={fechasAgencia} fechasContenidoHasta={fechasContenidoHasta} cicloActivo={cycleFilter ?? currentCicloMes()} onSelectCliente={setSelectedCliente} onNavigate={setView} />
           ) : view === 'gestion' ? (
             <TableroGestion clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} agenciaId={agenciaId} currentUser={currentUser} equipo={equipo} cicloMes={cycleFilter ?? undefined} />
           ) : view === 'diagnostico' ? (
@@ -800,15 +777,6 @@ export default function Home() {
           clientes={clientes}
           onClose={() => setShowStandbyModal(false)}
           onSaved={() => { setShowStandbyModal(false); loadData(); showToast('Cambios guardados', 'success') }}
-        />
-      )}
-      {showCrearCicloCompletoModal && (
-        <CrearCicloCompletoModal
-          agenciaId={agenciaId}
-          clientes={clientes}
-          currentUser={currentUser}
-          onClose={() => setShowCrearCicloCompletoModal(false)}
-          onDone={() => { loadPiezasAgencia(); loadRecursosAgencia(); showToast('Ciclo creado', 'success') }}
         />
       )}
       <ConfirmNuevoCicloModal
