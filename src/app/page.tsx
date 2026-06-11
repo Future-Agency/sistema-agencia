@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza, type DeudaContenido, type ClienteCicloRecursos } from '@/lib/supabase'
+import { supabase, type Cliente, type Owner, type Equipo, type AdAccount, type Agencia, type Pieza, type DeudaContenido, type ClienteCicloRecursos, type FechaEspecial } from '@/lib/supabase'
 import { indexPiezasByLoop, loopEstaCompletado, calcularFechaUltimoContenidoEstimada, primerDiaDelCiclo, planFromCliente } from '@/lib/piezas'
 import { Loading, Toast } from '@/components/ui'
 import ConfirmNuevoCicloModal from '@/components/ConfirmNuevoCicloModal'
@@ -34,6 +34,7 @@ import TableroPedidosClientes from '@/components/TableroPedidosClientes'
 import TableroDeudasContenido from '@/components/TableroDeudasContenido'
 import TableroDiaDeAgencia from '@/components/TableroDiaDeAgencia'
 import TableroPlanProduccion from '@/components/TableroPlanProduccion'
+import TableroAlertas from '@/components/TableroAlertas'
 import CycleSelector from '@/components/CycleSelector'
 import { currentCicloMes, nextCicloMes, comparteCiclo, cicloMesLabel, type CicloMes } from '@/lib/cycles'
 import EquipoModal from '@/components/EquipoModal'
@@ -55,6 +56,7 @@ export default function Home() {
   const [piezasAgencia, setPiezasAgencia] = useState<Pieza[]>([])
   const [deudasAgencia, setDeudasAgencia] = useState<DeudaContenido[]>([])
   const [recursosAgencia, setRecursosAgencia] = useState<ClienteCicloRecursos[]>([])
+  const [fechasAgencia, setFechasAgencia] = useState<FechaEspecial[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null)
   const [ownerFilter, setOwnerFilter] = useState('')
@@ -193,9 +195,16 @@ export default function Home() {
   const loadRecursosAgencia = useCallback(async () => {
     const { data } = await supabase
       .from('cliente_ciclo_recursos')
-      .select('cliente_id, ciclo_mes, fecha_ultimo_contenido_subido, cantidad_contenidos_subidos, fecha_publicacion')
+      .select('cliente_id, ciclo_mes, fecha_ultimo_contenido_subido, cantidad_contenidos_subidos, fecha_publicacion, fecha_grabacion_confirmada, fecha_grabacion_tentativa, pendiente_info_no_aplica, pendiente_info_link')
       .eq('agencia_id', agenciaId)
     setRecursosAgencia((data ?? []) as ClienteCicloRecursos[])
+  }, [agenciaId])
+
+  // Carga global de fechas especiales (para alertas)
+  const loadFechasAgencia = useCallback(async () => {
+    const { data } = await supabase
+      .from('fechas_especiales').select('*').eq('agencia_id', agenciaId)
+    setFechasAgencia((data ?? []) as FechaEspecial[])
   }, [agenciaId])
 
   useEffect(() => {
@@ -205,6 +214,10 @@ export default function Home() {
   useEffect(() => {
     if (currentUser && agenciaId) loadRecursosAgencia()
   }, [currentUser, agenciaId, loadRecursosAgencia])
+
+  useEffect(() => {
+    if (currentUser && agenciaId) loadFechasAgencia()
+  }, [currentUser, agenciaId, loadFechasAgencia])
 
   // Listener: refrescar piezas + deudas + recursos cuando hay cambios cross-tab / realtime
   useEffect(() => {
@@ -413,6 +426,8 @@ export default function Home() {
   }
 
   const allNavItems = [
+    // Lo más importante: lo que hay que arreglar HOY (siempre arriba)
+    { id: 'alertas', icon: 'fa-triangle-exclamation', label: 'Alertas' },
     // Vista general + flujo de producción (en orden del proceso)
     { id: 'general', icon: 'fa-th-large', label: 'Tablero General' },
     { id: 'produccion', icon: 'fa-clapperboard', label: 'Producción' },
@@ -712,6 +727,8 @@ export default function Home() {
             <TableroDiaDeAgencia clientes={clientes} equipo={equipo} owners={owners} piezas={piezasAgencia} onSelectCliente={setSelectedCliente} />
           ) : view === 'plan-produccion' ? (
             <TableroPlanProduccion clientes={clientes} piezas={piezasAgencia} recursosByLoop={recursosByLoop} fechasContenidoHasta={fechasContenidoHasta} cicloActivo={cycleFilter ?? currentCicloMes()} onSelectCliente={setSelectedCliente} />
+          ) : view === 'alertas' ? (
+            <TableroAlertas clientes={clientes} piezas={piezasAgencia} deudas={deudasAgencia} recursos={recursosAgencia} fechas={fechasAgencia} fechasContenidoHasta={fechasContenidoHasta} cicloActivo={cycleFilter ?? currentCicloMes()} onSelectCliente={setSelectedCliente} onNavigate={setView} />
           ) : view === 'gestion' ? (
             <TableroGestion clientes={filteredClientes} owners={owners} onSelectCliente={setSelectedCliente} ownerFilter={ownerFilter} agenciaId={agenciaId} currentUser={currentUser} equipo={equipo} cicloMes={cycleFilter ?? undefined} />
           ) : view === 'diagnostico' ? (
