@@ -35,6 +35,7 @@ import TableroDeudasContenido from '@/components/TableroDeudasContenido'
 import TableroDiaDeAgencia from '@/components/TableroDiaDeAgencia'
 import TableroPlanProduccion from '@/components/TableroPlanProduccion'
 import TableroAlertas from '@/components/TableroAlertas'
+import CrearCicloCompletoModal from '@/components/CrearCicloCompletoModal'
 import CycleSelector from '@/components/CycleSelector'
 import { currentCicloMes, nextCicloMes, comparteCiclo, cicloMesLabel, type CicloMes } from '@/lib/cycles'
 import EquipoModal from '@/components/EquipoModal'
@@ -291,6 +292,7 @@ export default function Home() {
 
   // Modal de confirmación pesada antes de mover masivamente todos los clientes al ciclo siguiente.
   const [showNuevoCicloModal, setShowNuevoCicloModal] = useState(false)
+  const [showCrearCicloCompletoModal, setShowCrearCicloCompletoModal] = useState(false)
   const nuevoCicloFrom = cycleFilter ?? currentCicloMes()
   const nuevoCicloTo = nextCicloMes(nuevoCicloFrom)
   const nuevoCicloAfectados = useMemo(
@@ -532,6 +534,11 @@ export default function Home() {
             <div className="nav-item" onClick={startNewCycle}
               style={startingNewCycle ? { opacity: 0.5, pointerEvents: 'none' } : {}}>
               <i className="fas fa-rotate-right" />{!sidebarCollapsed && <span>{startingNewCycle ? 'Iniciando…' : 'Iniciar nuevo ciclo'}</span>}
+            </div>
+          )}
+          {(currentUser.role === 'admin' || currentUser.role === 'semi-admin') && (
+            <div className="nav-item" onClick={() => setShowCrearCicloCompletoModal(true)}>
+              <i className="fas fa-calendar-plus" />{!sidebarCollapsed && <span>Crear ciclo completo</span>}
             </div>
           )}
         </div>
@@ -794,6 +801,15 @@ export default function Home() {
           clientes={clientes}
           onClose={() => setShowStandbyModal(false)}
           onSaved={() => { setShowStandbyModal(false); loadData(); showToast('Cambios guardados', 'success') }}
+        />
+      )}
+      {showCrearCicloCompletoModal && (
+        <CrearCicloCompletoModal
+          agenciaId={agenciaId}
+          clientes={clientes}
+          currentUser={currentUser}
+          onClose={() => setShowCrearCicloCompletoModal(false)}
+          onDone={() => { loadPiezasAgencia(); loadRecursosAgencia(); showToast('Ciclo creado', 'success') }}
         />
       )}
       <ConfirmNuevoCicloModal
