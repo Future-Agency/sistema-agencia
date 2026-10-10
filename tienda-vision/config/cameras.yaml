@@ -1,0 +1,73 @@
+# Configuración de cámaras, zonas y reglas.
+# Todas las coordenadas son relativas al cuadro (0..1), así no dependen de la resolución.
+
+store:
+  name: "Mi negocio"
+  timezone: "America/Argentina/Buenos_Aires"
+  open_hours:
+    start: "08:00"
+    end: "21:00"
+
+api_url: "http://localhost:8000"
+
+model:
+  weights: "yolo11n.pt"      # nano: corre en CPU. Con GPU usar yolo11s.pt o yolo11m.pt
+  confidence: 0.35
+  frame_stride: 3            # procesa 1 de cada 3 frames
+  imgsz: 640
+  tracker: "bytetrack.yaml"
+
+alerts:
+  loitering_seconds: 120     # persona más de N segundos en una zona tipo "gondola"
+  queue_max: 4               # más de N personas en una zona tipo "cola"
+  occupancy_every_s: 10      # cada cuánto se guarda un snapshot de ocupación por zona
+  heatmap_every_s: 60        # cada cuánto se vuelca el mapa de calor acumulado
+  heatmap_grid: [32, 18]     # columnas x filas
+  clip_before_s: 10
+  clip_after_s: 8
+
+# Qué cajero/terminal del POS corresponde a cada cámara de caja (para cruzar ventas con video)
+pos:
+  terminal_camera:
+    CAJA1: caja1
+
+cameras:
+  - id: entrada
+    name: "Entrada"
+    source: "rtsp://usuario:clave@192.168.1.10:554/Streaming/Channels/101"
+    record: true
+    lines:
+      - id: puerta
+        start: [0.0, 0.35]
+        end: [1.0, 0.35]
+        in_direction: down        # cruzar hacia abajo = entra al local
+    zones:
+      - id: vidriera
+        kind: gondola
+        polygon: [[0.0, 0.5], [0.4, 0.5], [0.4, 1.0], [0.0, 1.0]]
+
+  - id: caja1
+    name: "Caja 1"
+    source: "rtsp://usuario:clave@192.168.1.11:554/Streaming/Channels/101"
+    record: true
+    terminal: CAJA1
+    zones:
+      - id: cola
+        kind: cola
+        polygon: [[0.0, 0.2], [0.45, 0.2], [0.45, 1.0], [0.0, 1.0]]
+      - id: cliente_caja
+        kind: caja_cliente
+        polygon: [[0.45, 0.2], [0.75, 0.2], [0.75, 1.0], [0.45, 1.0]]
+      - id: cajero
+        kind: caja_empleado
+        polygon: [[0.75, 0.0], [1.0, 0.0], [1.0, 1.0], [0.75, 1.0]]
+
+  - id: deposito
+    name: "Depósito"
+    source: "rtsp://usuario:clave@192.168.1.12:554/Streaming/Channels/101"
+    record: true
+    zones:
+      - id: deposito
+        kind: restringida          # cualquier persona fuera de horario, o siempre si restricted_always
+        restricted_always: false
+        polygon: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]

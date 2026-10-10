@@ -1,0 +1,9 @@
+*.db
+*.pt
+recordings/
+clips/
+__pycache__/
+.env
+venv/
+samples/*.mp4
+samples/*.jsonl
